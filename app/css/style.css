@@ -82,6 +82,9 @@ a:hover { text-decoration: underline; }
 .nav-links a:hover { color: var(--ink); text-decoration: none; }
 
 .nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
   background: var(--panel);
@@ -90,6 +93,7 @@ a:hover { text-decoration: underline; }
   font-weight: 600;
 }
 .nav-cta:hover { border-color: var(--accent); }
+.nav-cta svg { color: var(--accent-ink); }
 
 .lede { margin: 0 0 24px; color: var(--ink-muted); font-size: 13.5px; font-weight: 300; }
 
@@ -97,7 +101,7 @@ a:hover { text-decoration: underline; }
 
 .panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(225px, 340px));
   gap: 26px;
   margin-bottom: 18px;
 }
@@ -309,12 +313,30 @@ progress::-moz-progress-bar { background: var(--accent); }
 
 footer {
   border-top: 1px solid var(--hairline);
-  padding-top: 12px;
+  padding-top: 16px;
   font-size: 13px;
   font-weight: 300;
   color: var(--ink-2);
 }
-footer p { margin: 4px 0; }
+
+.foot-grid { display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline; }
+
+.foot-credit { display: flex; flex-direction: column; gap: 2px; max-width: 560px; }
+.foot-title { font-weight: 700; font-size: 14px; color: var(--ink); }
+
+.foot-links { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+.foot-links a {
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(25, 25, 20, 0.06);
+  padding: 4px 14px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.foot-links a:hover { text-decoration: none; border-color: var(--accent); color: var(--ink); }
+
+footer p.dim { margin: 12px 0 0; max-width: 760px; }
 
 @media (max-width: 640px) {
   .page { padding: 22px 16px 40px; }

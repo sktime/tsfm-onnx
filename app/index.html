@@ -22,8 +22,12 @@
   <nav class="topbar">
     <span class="brand">t0&nbsp;forecast</span>
     <span class="nav-links">
-      <a href="https://github.com/" target="_blank" rel="noopener" id="source-link-top">source</a>
-      <a class="nav-cta" href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
+      <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
+      <!-- TODO: point at the real repo once pushed -->
+      <a class="nav-cta" href="https://github.com/siddharth7113" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 .3l2.1 4.8 5.2.5-3.9 3.4 1.1 5.1L8 11.4l-4.5 2.7 1.1-5.1L.7 5.6l5.2-.5z"/></svg>
+        Star on GitHub
+      </a>
     </span>
   </nav>
   <p class="lede">Zero-shot time-series forecasting in your browser. Runs entirely on your device; data you load here never leaves the page.</p>
@@ -100,14 +104,28 @@
   </details>
 
   <footer>
-    <p>
-      Model: <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">t0-alpha</a>
-      by <a href="https://theforecastingcompany.com" target="_blank" rel="noopener">The Forecasting Company</a>
-      (Apache-2.0, gated weights) | engine: <a href="https://onnxruntime.ai" target="_blank" rel="noopener">ONNX Runtime Web</a>
-      | unofficial project, not affiliated with The Forecasting Company
-      | <a href="https://github.com/" target="_blank" rel="noopener" id="source-link">source</a>
+    <div class="foot-grid">
+      <div class="foot-credit">
+        <span class="foot-title">Built on t0-alpha</span>
+        <span>a time-series foundation model by
+          <a href="https://theforecastingcompany.com" target="_blank" rel="noopener">The Forecasting Company</a>,
+          running here through
+          <a href="https://onnxruntime.ai" target="_blank" rel="noopener">ONNX Runtime Web</a>.
+        </span>
+      </div>
+      <div class="foot-links">
+        <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
+        <a href="https://github.com/theforecastingcompany/tfc-t0" target="_blank" rel="noopener">tfc-t0 library</a>
+        <!-- TODO: point at the real repo once pushed -->
+        <a href="https://github.com/siddharth7113" target="_blank" rel="noopener" id="source-link">source code</a>
+      </div>
+    </div>
+    <p class="dim">
+      Unofficial project, not affiliated with or endorsed by The Forecasting Company.
+      Model weights are Apache-2.0 with gated access. Forecasts are statistical
+      estimates, not guarantees; context is capped at the most recent 512 points
+      and the horizon is 64 steps.
     </p>
-    <p class="dim">Forecasts are statistical estimates, not guarantees. Context is capped at the most recent 512 points; horizon is 64 steps.</p>
   </footer>
 
 </div>
