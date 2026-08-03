@@ -14,7 +14,7 @@
  *   -> chart + metric tiles + table
  */
 
-import { CONTEXT_LEN, HORIZON, MEDIAN_INDEX, MODEL_SIZES_MB } from "./config.js";
+import { CONTEXT_LEN, HORIZON, MEDIAN_INDEX } from "./config.js";
 import { getSession, forecast, forecastJoint } from "./forecaster.js";
 import { loadIndex, loadDataset, parseCsv, datasetFromUpload } from "./data.js";
 import { diffStats, mae, bandCoverage, compact } from "./metrics.js";
@@ -51,7 +51,7 @@ function onProgress(loaded, total) {
     setStatus(`downloading model ${(loaded / 1e6).toFixed(0)} / ${(total / 1e6).toFixed(0)} MB (cached after first load)`);
   } else {
     bar.removeAttribute("value");
-    setStatus(`downloading model ${(loaded / 1e6).toFixed(0)} MB…`);
+    setStatus(`downloading model ${(loaded / 1e6).toFixed(0)} MB...`);
   }
 }
 
@@ -104,7 +104,7 @@ async function run() {
     const session = await getSession(precision, joint ? "joint" : "univariate", onProgress);
     if (token !== state.runToken) return;
     $("progress").hidden = true;
-    setStatus("running…");
+    setStatus("running...");
 
     if (joint) {
       if (!state.jointRows) {
@@ -122,7 +122,7 @@ async function run() {
     }
 
     const mode = joint ? `joint x${state.source.columns.length}` : "univariate";
-    setStatus(`forecast in ${state.ms.toFixed(0)} ms — ${precision}, ${mode}, WASM`);
+    setStatus(`forecast in ${state.ms.toFixed(0)} ms - ${precision}, ${mode}, WASM`);
     chart.setData(state.data, state.quantiles);
     renderLegend();
     renderMetrics();
@@ -136,7 +136,7 @@ async function run() {
 
 function renderHead() {
   $("title").textContent = state.data.title;
-  $("note").textContent = state.data.note + (isJoint() ? " — jointly forecast with the other columns" : "");
+  $("note").textContent = state.data.note + (isJoint() ? " - jointly forecast with the other columns" : "");
 }
 
 function renderLegend() {
@@ -170,17 +170,17 @@ function renderMetrics() {
       data.refNatural ? `library gets ${compact(mae(data.refNatural.map((qs) => qs[MEDIAN_INDEX]), data.actuals))}` : "lower is better"));
     const cov = bandCoverage(quantiles, data.actuals);
     if (Number.isFinite(cov)) {
-      tiles.push(tile("Actuals inside 10–90 band", pct(cov), "well-calibrated is about 80%"));
+      tiles.push(tile("Actuals inside 10-90 band", pct(cov), "well-calibrated is about 80%"));
     }
   }
 
   if (data.refSame) {
     const same = diffStats(quantiles, data.refSame);
     tiles.push(tile("vs library, same input", `${pct(same.mean)} mean`,
-      `max ${pct(same.max)} of spread — export + quantization`));
+      `max ${pct(same.max)} of spread - export + quantization`));
     const natural = diffStats(quantiles, data.refNatural);
     tiles.push(tile("vs library, natural call", `${pct(natural.mean)} mean`,
-      `max ${pct(natural.max)} of spread — adds padding effect`));
+      `max ${pct(natural.max)} of spread - adds padding effect`));
   }
 
   $("metrics").replaceChildren(...tiles);
@@ -287,18 +287,6 @@ async function pickTestFile(file) {
   await run();
 }
 
-/* ---------------- theme ---------------- */
-
-const THEMES = ["auto", "light", "dark"];
-
-function applyTheme(theme) {
-  if (theme === "auto") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = theme;
-  $("theme").textContent = `theme: ${theme}`;
-  localStorage.setItem("t0-theme", theme);
-  chart.redraw();
-}
-
 /* ---------------- wiring ---------------- */
 
 function wireDropzone(label, input, onFile) {
@@ -316,13 +304,6 @@ function wireDropzone(label, input, onFile) {
 }
 
 async function init() {
-  applyTheme(localStorage.getItem("t0-theme") ?? "auto");
-  $("theme").addEventListener("click", () => {
-    const current = localStorage.getItem("t0-theme") ?? "auto";
-    applyTheme(THEMES[(THEMES.indexOf(current) + 1) % THEMES.length]);
-  });
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart.redraw());
-
   wireDropzone($("dropzone"), $("csv"), pickUpload);
   wireDropzone($("testzone"), $("testcsv"), pickTestFile);
 
@@ -347,7 +328,7 @@ async function init() {
   try {
     const index = await loadIndex();
     $("dataset").replaceChildren(
-      ...[{ file: "", title: "— choose a sample dataset —" }, ...index].map((d) => {
+      ...[{ file: "", title: "- choose a sample dataset -" }, ...index].map((d) => {
         const option = document.createElement("option");
         option.value = d.file;
         option.textContent = d.title;
@@ -357,7 +338,7 @@ async function init() {
     $("dataset").value = index[0].file;
     await pickDataset(index[0].file);
   } catch (e) {
-    setStatus(`failed to start: ${e.message} — serve the repo root and run scripts/make_demo_data.py`, true);
+    setStatus(`failed to start: ${e.message} - serve the repo root and run scripts/make_demo_data.py`, true);
   }
 }
 

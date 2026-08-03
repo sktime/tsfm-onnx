@@ -3,7 +3,7 @@
  * forecasts, and point forecasts vs known actuals.
  */
 
-/** Range of a [step][level] forecast — the scale errors are reported
+/** Range of a [step][level] forecast - the scale errors are reported
  *  against. Raw absolute diffs are meaningless across datasets (passengers
  *  in hundreds, temperatures around 10), so errors are % of this spread. */
 export function spreadOf(quantiles) {
@@ -40,7 +40,7 @@ export function mae(pointForecast, actuals) {
   return diffs.reduce((a, b) => a + b, 0) / diffs.length;
 }
 
-/** Share of actuals inside the outer (10-90) band — a calibration hint:
+/** Share of actuals inside the outer (10-90) band - a calibration hint:
  *  a well-calibrated 80% interval should contain roughly 80% of actuals. */
 export function bandCoverage(quantiles, actuals) {
   let inside = 0;

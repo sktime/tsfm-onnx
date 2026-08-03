@@ -107,7 +107,7 @@ export function datasetFromUpload(fileName, column, labels, compare) {
     note = `${values.length} points, compared against uploaded test data (${actuals.length} points)`;
   }
   return {
-    title: `${column.name} — ${fileName}`,
+    title: `${column.name} - ${fileName}`,
     note,
     context,
     actuals,

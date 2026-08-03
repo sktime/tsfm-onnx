@@ -1,6 +1,6 @@
 /**
  * The contract with the exported ONNX graphs. These values are BAKED INTO
- * the model files by scripts/export_t0_onnx.py — changing them here without
+ * the model files by scripts/export_t0_onnx.py - changing them here without
  * re-exporting produces wrong results, not errors.
  *
  *   univariate graph:  context [rows, 512]              -> quantiles [rows, 64, 5]

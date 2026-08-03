@@ -121,7 +121,7 @@ export function createChart(root) {
       if (label) return label;
     }
     const off = i - tail;
-    return off < 0 ? `t−${-off}` : `t+${off + 1}`;
+    return off < 0 ? `t-${-off}` : `t+${off + 1}`;
   }
 
   /* ---------- drawing ---------- */
@@ -238,7 +238,8 @@ export function createChart(root) {
       if (state.quantiles && k < HORIZON) {
         const qs = state.quantiles[k];
         rows.push({ name: "forecast median", color: colors().forecast, value: qs[MEDIAN_INDEX] });
-        rows.push({ name: "10–90 band", color: colors().forecast, value: qs[0], value2: qs[4] });
+        // The band is an ink wash in this theme, so its key is ink too.
+        rows.push({ name: "10-90 band", color: colors().history, value: qs[0], value2: qs[4] });
       }
       if (data.refNatural && k < HORIZON) {
         rows.push({ name: "library median", color: colors().reference, value: data.refNatural[k][MEDIAN_INDEX] });
@@ -274,7 +275,7 @@ export function createChart(root) {
 
   const fmt = (v) => Number(v.toPrecision(5)).toLocaleString("en");
 
-  /** Tooltip DOM via textContent only — series/category names originate in
+  /** Tooltip DOM via textContent only - series/category names originate in
    *  user CSV headers and are untrusted. */
   function showTooltip(i, pointerX) {
     const rows = seriesAt(i);
@@ -292,7 +293,7 @@ export function createChart(root) {
       key.style.background = row.color;
       const value = document.createElement("span");
       value.className = "tt-value";
-      value.textContent = Number.isFinite(row.value2) ? `${fmt(row.value)} – ${fmt(row.value2)}` : fmt(row.value);
+      value.textContent = Number.isFinite(row.value2) ? `${fmt(row.value)} - ${fmt(row.value2)}` : fmt(row.value);
       const name = document.createElement("span");
       name.className = "tt-name";
       name.textContent = row.name;

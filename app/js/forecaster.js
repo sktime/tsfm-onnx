@@ -8,7 +8,7 @@
 
 import { CONTEXT_LEN, HORIZON, LEVELS, MODEL_BASE, MODEL_FILES } from "./config.js";
 
-/** One session per (graph, precision), created on first use, then cached —
+/** One session per (graph, precision), created on first use, then cached -
  *  a load means downloading 100-400 MB and compiling WASM kernels. */
 const sessions = {};
 
@@ -56,7 +56,7 @@ export async function getSession(precision, graph, onProgress) {
 /**
  * Pack series into the [rows, CONTEXT_LEN] input: most recent points at the
  * right edge, NaN padding on the left. NaN is a *valid* model input meaning
- * "missing" — this is how fixed-shape graphs serve any series length.
+ * "missing" - this is how fixed-shape graphs serve any series length.
  */
 function packContext(seriesList) {
   const data = new Float32Array(seriesList.length * CONTEXT_LEN).fill(NaN);
