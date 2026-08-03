@@ -1,6 +1,6 @@
 /**
  * QA: the grouped (multivariate) graph under onnxruntime-web's WASM engine,
- * on the Daily Delhi climate columns — the app's "forecast all columns
+ * on the Daily Delhi climate columns - the app's "forecast all columns
  * jointly" path.
  *
  * The rigorous equivalence proof against the PyTorch library runs at export
@@ -10,7 +10,7 @@
  *
  *   1. shared ids (joint): shape/finiteness/monotone-quantile invariants;
  *   2. distinct ids (independent): same invariants;
- *   3. the two modes DIFFER — group attention really exchanges information
+ *   3. the two modes DIFFER - group attention really exchanges information
  *      between the columns.
  *
  * Run:  cd tests && npm install onnxruntime-web@1.22.0 && node qa_multivariate.mjs

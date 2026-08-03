@@ -5,8 +5,8 @@ Two Node-based checks, both running the exported models under
 
 ## 1. WASM engine smoke test
 
-Verifies both exported models under **onnxruntime-web's WASM kernels** — the
-exact engine the browser demo uses — against native ONNX Runtime outputs.
+Verifies both exported models under **onnxruntime-web's WASM kernels** - the
+exact engine the browser demo uses - against native ONNX Runtime outputs.
 This catches per-runtime kernel gaps (see [docs/LOGBOOK.md](../docs/LOGBOOK.md) §8: a graph that native
 ORT runs can still fail on another engine) without needing a browser.
 
@@ -18,7 +18,7 @@ python tests/make_vector.py        # with .venv-export activated
 cd tests && npm install onnxruntime-web@1.22.0 && node run_wasm.js
 ```
 
-Expected: max |wasm − native| around 1e-5 for both models.
+Expected: max |wasm - native| around 1e-5 for both models.
 
 Result on 2026-08-03 (node v24, onnxruntime-web 1.22.0):
 

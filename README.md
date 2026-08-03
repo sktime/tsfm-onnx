@@ -103,7 +103,7 @@ python -m http.server 8000
 
 ## Hosting the app publicly
 
-The app is static files, so any static host serves it — with one trap: the
+The app is static files, so any static host serves it - with one trap: the
 model files. GitHub rejects files over 100 MB, so GitHub Pages cannot host
 even the int8 model, and most free static hosts have similar caps. The
 standard solution is the one transformers.js demos use: put the `.onnx`

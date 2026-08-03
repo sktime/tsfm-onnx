@@ -49,17 +49,17 @@ HORIZON = 64
 DATASETS = [
     {
         "file": "airline-passengers",
-        "title": "International airline passengers (monthly, 1949–1960)",
-        "note": "144 points, trend + strong yearly seasonality — shorter than 512, so the NaN-padding path is exercised",
+        "title": "International airline passengers (monthly, 1949-1960)",
+        "note": "144 points, trend + strong yearly seasonality - shorter than 512, so the NaN-padding path is exercised",
     },
     {
         "file": "daily-min-temperatures",
-        "title": "Daily minimum temperatures, Melbourne (1981–1990)",
-        "note": "3650 points, noisy yearly seasonality — uses the most recent 512 points",
+        "title": "Daily minimum temperatures, Melbourne (1981-1990)",
+        "note": "3650 points, noisy yearly seasonality - uses the most recent 512 points",
     },
     {
         "file": "monthly-sunspots",
-        "title": "Monthly sunspot counts (1749–1983)",
+        "title": "Monthly sunspot counts (1749-1983)",
         "note": "2820 points, ~11-year solar cycle",
     },
 ]
