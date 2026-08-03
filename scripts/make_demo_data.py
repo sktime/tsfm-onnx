@@ -27,7 +27,7 @@ export's context budget, not of ONNX fidelity -- mixing the two would make
 the browser look wrongly broken. Export a bigger --context-len if long
 history matters.
 
-Everything lands in webdemo/data/ as JSON + an index the page discovers.
+Everything lands in app/data/ as JSON + an index the page discovers.
 
 Usage (with .venv-export activated):  python scripts/make_demo_data.py
 """
@@ -84,7 +84,7 @@ def download_values(name: str, out_dir: Path) -> list[float]:
 
 
 def to_browser_input(context: list[float]) -> torch.Tensor:
-    """Exactly what webdemo/index.html builds: last CONTEXT_LEN points at
+    """Exactly what app/js/forecaster.js builds: last CONTEXT_LEN points at
     the right edge, NaN padding on the left."""
     ctx = torch.full((1, CONTEXT_LEN), float("nan"))
     tail = context[-CONTEXT_LEN:]
@@ -93,7 +93,7 @@ def to_browser_input(context: list[float]) -> torch.Tensor:
 
 
 def main() -> None:
-    out_dir = ROOT / "webdemo" / "data"
+    out_dir = ROOT / "app" / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("loading t0-alpha (original library, no export patches)...")

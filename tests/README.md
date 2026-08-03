@@ -31,12 +31,26 @@ fp32: load 1321 ms, run  78 ms, max |wasm - native| = 1.53e-5
 
 `qa_csv_upload.mjs` pushes a real-world multi-column CSV (fixtures/, from
 Kaggle's Daily Delhi Climate set) through the demo's own parser
-(`webdemo/js/data.js`) and the int8 model, then checks invariants: the
+(`app/js/data.js`) and the int8 model, then checks invariants: the
 date column is excluded, all four climate columns are found by name,
 forecasts are finite, quantiles never cross, and medians stay in a
 plausible range of the recent context. The dataset is intentionally not in
-the demo menu; it stands in for "random file a user uploads".
+the app menu; it stands in for "random file a user uploads".
 
 ```bash
 cd tests && npm install onnxruntime-web@1.22.0 && node qa_csv_upload.mjs
+```
+
+## 3. QA: joint multivariate forecasting
+
+`qa_multivariate.mjs` runs the grouped int8 graph on all four Delhi climate
+columns under the WASM engine, twice: once with shared group ids (joint,
+the app's "forecast all columns jointly" mode) and once with distinct ids
+(independent). It checks the same invariants in both modes and then
+asserts the two outputs differ, proving the `group_ids` input actually
+routes information between columns. The rigorous equivalence proof against
+the PyTorch library runs at export time (`export_t0_onnx.py --grouped`).
+
+```bash
+cd tests && node qa_multivariate.mjs
 ```

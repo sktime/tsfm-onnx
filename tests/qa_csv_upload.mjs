@@ -4,7 +4,7 @@
  *
  * This dataset is deliberately NOT in the demo's dataset menu; it plays the
  * role of "random file a user drags in". The test imports the demo's actual
- * parser (webdemo/js/data.js), so it exercises the shipped code:
+ * parser (app/js/data.js), so it exercises the shipped code:
  *
  *   1. parse the CSV -> the date column is excluded, all four climate
  *      columns are found by name;
@@ -23,7 +23,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { parseCsvColumns } from "../webdemo/js/data.js";
+import { parseCsvColumns } from "../app/js/data.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -62,7 +62,7 @@ const session = await ort.InferenceSession.create(new Uint8Array(model), {
 });
 
 for (const column of train) {
-  // Identical to webdemo/js/forecaster.js toModelInput().
+  // Identical to app/js/forecaster.js packContext().
   const ctx = new Float32Array(CONTEXT_LEN).fill(NaN);
   const tail = column.values.slice(-CONTEXT_LEN);
   ctx.set(tail, CONTEXT_LEN - tail.length);
