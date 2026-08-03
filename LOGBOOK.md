@@ -229,9 +229,10 @@ for demos/dashboards; ship fp32 where fidelity matters. fp32 stays available.
 
 ## 11. Loose ends, honestly recorded
 
-- `webdemo/index.html` (onnxruntime-web, WASM) is **untested in a real
-  browser** — no Node/npm/browser on this machine. First suspect if loading
-  fails: the pinned `onnxruntime-web` version vs the model's IR 10/opset 18.
+- ~~`webdemo/index.html` untested~~ — resolved once Node was installed:
+  `tests/run_wasm.js` runs both models under onnxruntime-web 1.22.0's WASM
+  kernels and matches native ORT to ~1e-5 (int8 forecast in ~120 ms). Only
+  the page chrome (CDN script, fetch paths, canvas) remains browser-only.
 - The main venv (`.venv`, Python 3.14 + torch 2.13) is outside `tfc-t0`'s
   declared support (`<3.14`) — it worked for `predict()` but all export work
   should use `.venv-export`.

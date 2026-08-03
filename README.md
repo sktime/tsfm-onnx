@@ -59,10 +59,11 @@ Batch is dynamic; context length (512) and horizon (64) are baked in — rerun
 
 ## Known caveats
 
-- `webdemo/` has not yet been tested in a real browser (this machine has no
-  Node/browser). If the model fails to load, check the pinned
-  `onnxruntime-web` version against the model's IR/opset
-  (`inspect_onnx.py onnx/... | head -2`).
+- Both models are verified under onnxruntime-web's WASM engine via the Node
+  smoke test in [tests/](tests/README.md) (matches native ORT to ~1e-5,
+  ~100 ms per forecast). The page itself hasn't had a full click-through in
+  a browser yet; if anything misbehaves there, suspects are the CDN script
+  tag or fetch paths, not the model.
 - int8 model: mean drift ≈ 3.3% of forecast spread (max ≈ 12%) vs fp32.
   Ship the fp32 file where fidelity matters more than the 4× download.
 - `.venv` (Python 3.14) predates this work and is outside `tfc-t0`'s

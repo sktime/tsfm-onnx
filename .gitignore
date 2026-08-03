@@ -4,3 +4,6 @@
 .venv-export/
 __pycache__/
 onnx/*.onnx
+tests/node_modules/
+tests/vector.json
+tests/package*.json
