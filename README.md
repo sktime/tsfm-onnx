@@ -2,6 +2,10 @@
 
 ###  Used Claude Fable 5 in different parts of the project.
 
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
+[![Models on Hugging Face](https://img.shields.io/badge/models-Hugging%20Face-yellow)](https://huggingface.co/Siddharth899/tsfm-onnx)
+[![Live demo](https://img.shields.io/badge/demo-GitHub%20Pages-14ae83)](https://siddharth7113.github.io/tsfm-onnx/)
+
 This project takes [The Forecasting Company](https://theforecastingcompany.com)'s
 [t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha) time-series
 foundation model, exports it from PyTorch to ONNX, and runs it entirely in the
@@ -15,6 +19,17 @@ process can be repeated on other models.
 
 > Note: this is an unofficial project that is not affiliated with or endorsed
 > by The Forecasting Company.
+
+![The app: airline passengers forecast with quantile bands, library median overlay, and metric tiles](docs/screenshots/app.png)
+
+<details>
+<summary>More screenshots: crosshair tooltip and forecast table</summary>
+
+![Crosshair tooltip listing every series at the hovered step](docs/screenshots/tooltip.png)
+
+![Forecast table with quantiles, actuals, and CSV download](docs/screenshots/table.png)
+
+</details>
 
 ## Highlights
 
@@ -101,6 +116,35 @@ python -m http.server 8000
 # then open http://localhost:8000/app/
 ```
 
+## Use the models from Python
+
+The exported graphs are plain ONNX, so they run anywhere ONNX Runtime does.
+The files are on the Hugging Face Hub at
+[Siddharth899/tsfm-onnx](https://huggingface.co/Siddharth899/tsfm-onnx), so
+you do not need this repository or the gated original weights to use them:
+
+```python
+# pip install onnxruntime huggingface_hub numpy
+import numpy as np
+import onnxruntime as ort
+from huggingface_hub import hf_hub_download
+
+path = hf_hub_download("Siddharth899/tsfm-onnx", "t0-alpha-ctx512-h64.onnx")
+session = ort.InferenceSession(path)
+
+series = np.sin(np.arange(300) / 10) * 10 + 50          # your data here
+context = np.full((1, 512), np.nan, dtype=np.float32)   # NaN = missing
+context[0, -len(series):] = series[-512:]
+
+(quantiles,) = session.run(None, {"context": context})  # (1, 64, 5)
+median = quantiles[0, :, 2]
+```
+
+For joint multivariate forecasting use the `-mv` file, stack the series as
+rows, and add `"group_ids": np.zeros(rows, dtype=np.int64)` to the feed
+(shared ids are forecast jointly; distinct ids are independent). The full
+contract is on the model card.
+
 ## Hosting the app publicly
 
 The app is static files, so any static host serves it - with one trap: the
@@ -110,16 +154,22 @@ standard solution is the one transformers.js demos use: put the `.onnx`
 files in a Hugging Face model repository (its CDN sends the CORS headers
 browsers need) and keep the site itself anywhere.
 
-1. Create a model repo and upload the graphs:
-   `hf upload <you>/t0-alpha-onnx onnx/ .` (from the repo root).
-2. Point `MODEL_BASE` in [`app/js/config.js`](app/js/config.js) at
-   `https://huggingface.co/<you>/t0-alpha-onnx/resolve/main/`.
-3. Deploy the `app/` folder to any static host (GitHub Pages, Cloudflare
-   Pages, Netlify).
+This project's models live at
+[Siddharth899/tsfm-onnx](https://huggingface.co/Siddharth899/tsfm-onnx)
+(model card in [docs/HF_MODEL_CARD.md](docs/HF_MODEL_CARD.md)), and
+[`app/js/config.js`](app/js/config.js) already fetches from there whenever
+the site is not running on localhost. Deploying is therefore just:
 
-Before publishing, check the license terms of the t0-alpha weights allow
-you to redistribute the converted model, and keep the attribution in the
-app footer.
+1. Push this repository to GitHub.
+2. Serve the `app/` folder on any static host (GitHub Pages, Cloudflare
+   Pages, Netlify). For GitHub Pages, publish the repo and set Pages to
+   serve from the `app/` directory (or a workflow that copies it).
+
+To host the models yourself instead, upload `onnx/*.onnx` to your own HF
+model repo (`hf upload <you>/<repo> onnx . --include "*.onnx"`) and change
+`MODEL_BASE`. The t0-alpha weights are Apache-2.0, so converted
+redistribution with attribution is permitted; keep the credit in the app
+footer and the model card.
 
 ## Repository layout
 

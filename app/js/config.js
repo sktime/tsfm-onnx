@@ -14,15 +14,15 @@ export const LEVELS = [0.1, 0.25, 0.5, 0.75, 0.9];
 export const MEDIAN_INDEX = LEVELS.indexOf(0.5);
 
 /**
- * Where the .onnx files live. Default: served next to the site from the
- * repo's onnx/ folder.
- *
- * FOR PUBLIC HOSTING: GitHub Pages rejects files over 100 MB, so host the
- * models on the Hugging Face Hub (a plain model repo; its CDN sends CORS
- * headers) and point this at it, e.g.
- *   "https://huggingface.co/<you>/t0-alpha-onnx/resolve/main/"
+ * Where the .onnx files live. Local development serves them from the
+ * repo's onnx/ folder; everywhere else they come from the Hugging Face
+ * CDN (GitHub Pages rejects files over 100 MB, so the site and the
+ * models are hosted separately).
  */
-export const MODEL_BASE = new URL("../../onnx/", import.meta.url).href;
+const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
+export const MODEL_BASE = LOCAL
+  ? new URL("../../onnx/", import.meta.url).href
+  : "https://huggingface.co/Siddharth899/tsfm-onnx/resolve/main/";
 
 export const MODEL_FILES = {
   univariate: {
