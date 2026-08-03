@@ -203,7 +203,7 @@ disappoints, the next rung is static quantization with calibration data.
   supports your file's IR/opset (`scripts/inspect_onnx.py model.onnx` prints both).
 - Serve over HTTP (`python -m http.server`) — `file://` fetches fail.
 
-See `webdemo/index.html` for the full integration.
+See `app/` for the full integration.
 
 ## 11. The toolbox
 

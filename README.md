@@ -28,11 +28,17 @@ process can be repeated on other models.
 - **Fast.** A 64-step probabilistic forecast takes 80 to 120 milliseconds
   under WASM, and the engine's outputs are checked against native ONNX
   Runtime in [tests/](tests/README.md).
-- **An honest demo.** The demo forecasts real classic datasets (airline
-  passengers, Melbourne temperatures, and sunspots) while overlaying the
-  PyTorch library's own forecasts, so the difference between the browser and
-  the library is measured on screen instead of merely being asserted. You can
-  also upload your own CSV files.
+- **A complete tool, not just a demo.** The app in [`app/`](app/README.md)
+  forecasts your own CSV uploads (multi-column files get a series picker),
+  supports backtesting and comparison against uploaded test data, renders a
+  quantile-fan chart with a crosshair tooltip, and exports the forecast as a
+  table or CSV download. Sample datasets ship with the PyTorch library's own
+  forecasts overlaid, so the browser-vs-library difference is measured on
+  screen instead of merely being asserted.
+- **Multivariate forecasting.** A second exported graph takes a `group_ids`
+  input, so related series (for example the temperature, humidity, wind and
+  pressure columns of one climate file) can be forecast jointly and inform
+  each other through the model's group attention.
 - **Teaching materials.** A from-zero [export guide](docs/ONNX_EXPORT_GUIDE.md)
   explains how to export any model, and a [debugging logbook](docs/LOGBOOK.md)
   records every problem that came up along the way.
@@ -45,7 +51,7 @@ flowchart LR
     B --> C["t0-alpha-ctx512-h64.onnx<br/>411 MB fp32"]
     C --> D["scripts/quantize_t0_onnx.py<br/>dynamic int8"]
     D --> E["t0-alpha-ctx512-h64-int8.onnx<br/>108 MB"]
-    E --> F["webdemo/<br/>onnxruntime-web (WASM)"]
+    E --> F["app/<br/>onnxruntime-web (WASM)"]
     G["scripts/make_demo_data.py<br/>real datasets + PyTorch<br/>reference forecasts"] --> F
 ```
 
@@ -79,19 +85,41 @@ uv pip install -p .venv-export tfc-t0 onnx onnxscript onnxruntime
 # 2. Activate it for the rest of the session
 source .venv-export/bin/activate
 
-# 3. Export the model and validate it against the original library
-python scripts/export_t0_onnx.py       # writes onnx/t0-alpha-ctx512-h64.onnx
+# 3. Export both graphs and validate them against the original library
+python scripts/export_t0_onnx.py             # univariate: onnx/t0-alpha-ctx512-h64.onnx
+python scripts/export_t0_onnx.py --grouped   # multivariate: onnx/t0-alpha-ctx512-h64-mv.onnx
 
-# 4. Quantize it for the web
-python scripts/quantize_t0_onnx.py     # writes onnx/t0-alpha-ctx512-h64-int8.onnx
+# 4. Quantize both for the web
+python scripts/quantize_t0_onnx.py
+python scripts/quantize_t0_onnx.py --model onnx/t0-alpha-ctx512-h64-mv.onnx
 
-# 5. Prepare the demo datasets and the PyTorch reference forecasts
-python scripts/make_demo_data.py       # writes webdemo/data/
+# 5. Prepare the sample datasets and the PyTorch reference forecasts
+python scripts/make_demo_data.py             # writes app/data/
 
-# 6. Serve the repo root and open the demo
+# 6. Serve the repo root and open the app
 python -m http.server 8000
-# then open http://localhost:8000/webdemo/
+# then open http://localhost:8000/app/
 ```
+
+## Hosting the app publicly
+
+The app is static files, so any static host serves it — with one trap: the
+model files. GitHub rejects files over 100 MB, so GitHub Pages cannot host
+even the int8 model, and most free static hosts have similar caps. The
+standard solution is the one transformers.js demos use: put the `.onnx`
+files in a Hugging Face model repository (its CDN sends the CORS headers
+browsers need) and keep the site itself anywhere.
+
+1. Create a model repo and upload the graphs:
+   `hf upload <you>/t0-alpha-onnx onnx/ .` (from the repo root).
+2. Point `MODEL_BASE` in [`app/js/config.js`](app/js/config.js) at
+   `https://huggingface.co/<you>/t0-alpha-onnx/resolve/main/`.
+3. Deploy the `app/` folder to any static host (GitHub Pages, Cloudflare
+   Pages, Netlify).
+
+Before publishing, check the license terms of the t0-alpha weights allow
+you to redistribute the converted model, and keep the attribution in the
+app footer.
 
 ## Repository layout
 
@@ -101,7 +129,7 @@ python -m http.server 8000
 | [`scripts/quantize_t0_onnx.py`](scripts/quantize_t0_onnx.py) | Performs int8 dynamic quantization and reports the accuracy drift. |
 | [`scripts/inspect_onnx.py`](scripts/inspect_onnx.py) | A CLI for looking inside any `.onnx` file, with op histograms, per-node dtype and shape dumps, and a three-gate `--check`. |
 | [`scripts/make_demo_data.py`](scripts/make_demo_data.py) | Downloads the demo datasets and precomputes the library's reference forecasts. |
-| [`webdemo/`](webdemo/README.md) | The browser app, written as vanilla ES modules with no build step. Its [README](webdemo/README.md) documents the architecture. |
+| [`app/`](app/README.md) | The browser tool, written as vanilla ES modules with no build step. Its [README](app/README.md) documents the architecture and the no-framework decision. |
 | [`tests/`](tests/README.md) | Node-based regression tests that run both models under onnxruntime-web's WASM kernels. |
 | [`docs/ONNX_EXPORT_GUIDE.md`](docs/ONNX_EXPORT_GUIDE.md) | Explains how to export any PyTorch model to ONNX, assuming no prior ONNX knowledge. |
 | [`docs/LOGBOOK.md`](docs/LOGBOOK.md) | A chronological journal of every problem this conversion hit, with the symptom, the diagnosis, the fix, and the lesson for each. |
@@ -143,9 +171,10 @@ matter, prefer the fp32 model.
 
 ## Limitations
 
-- Only univariate forecasting is exported. The library's future-covariates
-  path is not included, although the export guide explains how you would add
-  it.
+- The library's future-covariates path (known future inputs such as
+  calendar features) is not exported, although the export guide explains how
+  you would add it. Multivariate targets ARE supported via the grouped
+  graph.
 - Each graph has one fixed context length, 512 in this case, so series with
   long memory, such as sunspots, benefit from re-exporting with a larger
   `--context-len`.

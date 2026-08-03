@@ -240,6 +240,27 @@ for demos/dashboards; ship fp32 where fidelity matters. fp32 stays available.
   directory triggered a torch circular-import; the same script ran fine from
   the repo. Filed under "cursed, non-blocking".
 
+## 12. The multivariate update (2026-08-03, later the same day)
+
+Adding multivariate support turned out to be a ~30-line change, because the
+univariate graph already ran all the machinery: t0-alpha implements
+multivariate forecasting through group attention between rows sharing a
+`group_ids` value, and the univariate export simply gave every row a
+distinct id (making that attention an identity). The update promotes
+`group_ids` from an internal constant to a **graph input** (`[rows]`
+int64): shared ids = joint multivariate forecast, distinct ids =
+independent series, one graph for both.
+
+Validation proves both semantics against `predict()` (max abs diff
+1.7e-05 each), plus a coupling check that joint and independent forecasts
+actually differ (they do, by 1.7 units on the test input — group attention
+is live). The WASM-level QA (`tests/qa_multivariate.mjs`) repeats the
+invariant and coupling checks for the int8 build on real climate data.
+
+**Lesson.** Before estimating an "add capability X" export as new work,
+check whether the graph already computes X behind a constant. Promoting a
+constant to an input is the cheapest feature in the ONNX toolbox.
+
 ---
 
 ## The condensed lessons
