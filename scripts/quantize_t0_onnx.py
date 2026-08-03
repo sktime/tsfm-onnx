@@ -65,8 +65,13 @@ def main() -> None:
 
     fp32 = InferenceSession(str(args.model), providers=["CPUExecutionProvider"])
     int8 = InferenceSession(str(out), providers=["CPUExecutionProvider"])
-    (ref,) = fp32.run(None, {"context": test})
-    (got,) = int8.run(None, {"context": test})
+    feeds = {"context": test}
+    if any(i.name == "group_ids" for i in fp32.get_inputs()):
+        # The grouped (multivariate) graph: distinct ids = independent rows,
+        # keeping this drift check comparable with the univariate one.
+        feeds["group_ids"] = np.arange(test.shape[0], dtype=np.int64)
+    (ref,) = fp32.run(None, feeds)
+    (got,) = int8.run(None, feeds)
 
     # Scale-aware metric: error relative to each series' forecast spread.
     spread = ref.max(axis=(1, 2), keepdims=True) - ref.min(axis=(1, 2), keepdims=True)

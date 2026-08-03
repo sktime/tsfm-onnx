@@ -201,12 +201,20 @@ Transformer.forward = _export_safe_transformer_forward
 t0_scaler.LocScale.__post_init__ = lambda self: None
 
 
-class T0OnnxWrapper(nn.Module):
-    """Single-pass forecast graph: context [B, T] (NaN=missing) -> [B, H, 5].
+class T0GroupedOnnxWrapper(nn.Module):
+    """Grouped single-pass forecast graph, the multivariate-capable variant.
+
+        context [rows, T] (NaN=missing) + group_ids [rows] -> [rows, H, 5]
+
+    Rows that share a group id are variates of ONE multivariate series and
+    attend to each other in the model's group-attention layers; rows with
+    distinct ids are independent series, exactly like the univariate graph
+    (whose group-attention mask reduces to the identity). Callers flatten
+    ``[B, V, T]`` to ``[B*V, T]`` and pass ids like ``[0, 0, 0, 1, 1, 1]``.
 
     Mirrors ``RolloutManager.predict``'s single-pass branch plus the
     preprocessing of ``TimeSeries.from_array``, with two simplifications
-    valid for univariate, no-covariate input:
+    valid for target-only, no-covariate input:
     - every row is a TARGET row, so the ``[target_rows]`` selection is the
       identity and is dropped;
     - quantile interpolation onto user-requested levels is dropped; the
@@ -219,7 +227,9 @@ class T0OnnxWrapper(nn.Module):
         ps = model.patch_size
         if context_len % ps != 0:
             # Also load-bearing for _export_safe_causal_stats: no left-pad
-            # means one group per row means segmented cumsum == plain cumsum.
+            # means one time-segment per row, so segmented cumsum == cumsum.
+            # (Group ids are constant ALONG TIME either way; sharing ids
+            # across rows does not create time-axis segments.)
             raise ValueError(f"context_len must be a multiple of patch_size ({ps})")
         if not (1 <= horizon <= model.max_horizon):
             raise ValueError(f"horizon must be in [1, {model.max_horizon}] for the single-pass path")
@@ -231,7 +241,7 @@ class T0OnnxWrapper(nn.Module):
         # patch boundary, slice the surplus steps off at the end.
         self.forecast_width = -(-horizon // ps) * ps
 
-    def forward(self, context: torch.Tensor) -> torch.Tensor:
+    def forward(self, context: torch.Tensor, group_ids: torch.Tensor) -> torch.Tensor:
         # --- 1. Preprocessing (TimeSeries.from_array, branch-free) ---
         # NaN -> value 0 + mask MISSING. Unconditional: with no NaNs these
         # are no-ops, so the original's ``if missing.any():`` guard is moot.
@@ -249,16 +259,14 @@ class T0OnnxWrapper(nn.Module):
         variates = torch.cat([values, fut_values], dim=1)
         mask = torch.cat([ctx_mask, fut_mask], dim=1)
 
-        # One distinct group id per row = independent univariate series.
-        row_ids = (torch.cumsum(torch.ones_like(row), dim=0) - 1).long()
-        group_ids = row_ids.expand(-1, variates.shape[1])
-        variate_type = torch.zeros_like(group_ids)  # VariateType.TARGET
+        ids = group_ids.long().unsqueeze(1).expand(-1, variates.shape[1])
+        variate_type = torch.zeros_like(ids)  # VariateType.TARGET
 
-        ts = TimeSeries(variates=variates, mask=mask, group_ids=group_ids, variate_type=variate_type)
+        ts = TimeSeries(variates=variates, mask=mask, group_ids=ids, variate_type=variate_type)
 
         # --- 3. predict_step: scale -> transformer -> inverse scale ---
         scaled, loc_scale = self.model.scaler.scale_input(ts)
-        per_patch = self.model(scaled)  # [B, patches, patch_size, 5]
+        per_patch = self.model(scaled)  # [rows, patches, patch_size, 5]
         preds = self.model.scaler.rescale_predictions(per_patch, loc_scale, self.ps)
 
         # --- 4. Slice out the forecast ---
@@ -269,14 +277,31 @@ class T0OnnxWrapper(nn.Module):
         return block[:, : self.horizon]
 
 
+class T0OnnxWrapper(T0GroupedOnnxWrapper):
+    """Univariate convenience graph: context [B, T] -> [B, H, 5].
+
+    Identical to the grouped graph with every row given a distinct group
+    id, i.e. B independent series. Kept as its own export so the common
+    single-series use pays no extra input.
+    """
+
+    def forward(self, context: torch.Tensor) -> torch.Tensor:
+        # cumsum(ones) - 1 instead of torch.arange(B) keeps batch symbolic.
+        row_ids = (torch.cumsum(torch.ones_like(context[:, :1]), dim=0) - 1).long().squeeze(1)
+        return super().forward(context, row_ids)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--context-len", type=int, default=512, help="fixed input length (multiple of 32)")
     parser.add_argument("--horizon", type=int, default=64, help="forecast steps baked into the graph")
+    parser.add_argument("--grouped", action="store_true",
+                        help="export the multivariate-capable graph with a group_ids input")
     parser.add_argument("--out", type=Path, default=None, help="output path (.onnx)")
     args = parser.parse_args()
 
-    out = args.out or ROOT / "onnx" / f"t0-alpha-ctx{args.context_len}-h{args.horizon}.onnx"
+    suffix = "-mv" if args.grouped else ""
+    out = args.out or ROOT / "onnx" / f"t0-alpha-ctx{args.context_len}-h{args.horizon}{suffix}.onnx"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print("loading model...")
@@ -286,28 +311,47 @@ def main() -> None:
     # forward) so no attribute assignment happens during export tracing.
     model.predict(torch.randn(1, args.context_len), horizon=1)
 
-    wrapper = T0OnnxWrapper(model, args.context_len, args.horizon).eval()
-
     # Example input: NaNs included so the MISSING path is exercised.
-    # Batch=2 here, validation uses batch=3 to prove the dim is dynamic.
+    # 2 rows here, validation uses different row counts to prove the dim is
+    # dynamic. The grouped example shares one id so the joint path is traced.
     example = torch.randn(2, args.context_len)
     example[0, :7] = float("nan")
+    rows = torch.export.Dim("rows", min=1)
 
     print(f"exporting to {out} ...")
     with torch.no_grad():
-        torch.onnx.export(
-            wrapper,
-            (example,),
-            str(out),
-            input_names=["context"],
-            output_names=["quantiles"],
-            dynamic_shapes={"context": {0: torch.export.Dim("batch", min=1)}},
-            dynamo=True,
-            external_data=False,  # single self-contained file (<2GB)
-        )
+        if args.grouped:
+            wrapper = T0GroupedOnnxWrapper(model, args.context_len, args.horizon).eval()
+            torch.onnx.export(
+                wrapper,
+                (example, torch.zeros(2, dtype=torch.int64)),
+                str(out),
+                input_names=["context", "group_ids"],
+                output_names=["quantiles"],
+                # The same Dim object on both inputs tells the exporter the
+                # row counts are equal.
+                dynamic_shapes={"context": {0: rows}, "group_ids": {0: rows}},
+                dynamo=True,
+                external_data=False,
+            )
+        else:
+            wrapper = T0OnnxWrapper(model, args.context_len, args.horizon).eval()
+            torch.onnx.export(
+                wrapper,
+                (example,),
+                str(out),
+                input_names=["context"],
+                output_names=["quantiles"],
+                dynamic_shapes={"context": {0: rows}},
+                dynamo=True,
+                external_data=False,  # single self-contained file (<2GB)
+            )
     print(f"exported: {out} ({out.stat().st_size / 1e6:.1f} MB)")
 
-    validate(out, model, args.context_len, args.horizon)
+    if args.grouped:
+        validate_grouped(out, model, args.context_len, args.horizon)
+    else:
+        validate(out, model, args.context_len, args.horizon)
 
 
 def validate(onnx_path: Path, model: T0Forecaster, context_len: int, horizon: int) -> None:
@@ -337,6 +381,48 @@ def validate(onnx_path: Path, model: T0Forecaster, context_len: int, horizon: in
     assert got.shape == ref.shape
     assert diff.max() < 1e-3, "ONNX output diverges from PyTorch"
     print("validation OK -- ONNX matches PyTorch predict()")
+
+
+def validate_grouped(onnx_path: Path, model: T0Forecaster, context_len: int, horizon: int) -> None:
+    """Prove BOTH semantics of the group_ids input against ``model.predict``.
+
+    Mode 1 (shared ids): rows flattened from [B, V, T] with ids
+    [0,0,0,1,1,1] must reproduce the library's joint multivariate forecast.
+    Mode 2 (distinct ids): the same rows with unique ids must reproduce the
+    library's independent univariate forecasts. Row counts differ from the
+    export example (6 vs 2) to prove the dim is dynamic.
+    """
+    import onnxruntime as ort
+
+    levels = [float(q) for q in model.head.quantile_levels]
+    B, V = 2, 3
+    test = torch.randn(B, V, context_len) * 10 + 5
+    test[0, 0, :50] = float("nan")
+    test[1, 2, 100] = float("nan")
+    flat = test.reshape(B * V, context_len)
+
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+
+    ref_joint = model.predict(test, horizon=horizon, quantiles=levels).quantiles.numpy()
+    ids_joint = torch.arange(B).repeat_interleave(V).numpy().astype(np.int64)
+    (got,) = sess.run(None, {"context": flat.numpy(), "group_ids": ids_joint})
+    diff = np.abs(got.reshape(B, V, horizon, -1) - ref_joint)
+    print(f"joint (shared ids)      max abs diff: {diff.max():.3e}")
+    assert diff.max() < 1e-3, "grouped ONNX diverges from multivariate predict()"
+
+    ref_indep = model.predict(flat, horizon=horizon, quantiles=levels).quantiles.numpy()
+    ids_indep = np.arange(B * V, dtype=np.int64)
+    (got,) = sess.run(None, {"context": flat.numpy(), "group_ids": ids_indep})
+    diff = np.abs(got - ref_indep)
+    print(f"independent (unique ids) max abs diff: {diff.max():.3e}")
+    assert diff.max() < 1e-3, "grouped ONNX diverges from univariate predict()"
+
+    # Sanity: the two modes must actually differ, i.e. group attention is
+    # really exchanging information between rows that share an id.
+    coupling = np.abs(ref_joint.reshape(B * V, horizon, -1) - ref_indep).max()
+    print(f"joint vs independent forecasts differ by {coupling:.3f} (group attention is live)")
+    assert coupling > 1e-3, "joint and independent forecasts identical; group_ids has no effect"
+    print("validation OK -- grouped ONNX matches predict() in both modes")
 
 
 if __name__ == "__main__":
