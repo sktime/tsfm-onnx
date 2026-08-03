@@ -1,0 +1,6 @@
+# Ignore-list for git (nothing here is deleted -- these entries only keep
+# big/generated things out of version control if this becomes a git repo).
+.venv/
+.venv-export/
+__pycache__/
+onnx/*.onnx
