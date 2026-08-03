@@ -1,0 +1,93 @@
+/* t0-alpha web demo styles. Plain CSS, no framework. */
+
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 1000px;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+  color: #222;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+/* --- control row -------------------------------------------------- */
+
+.controls {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0.8rem 0;
+}
+
+.controls label {
+  font-weight: 600;
+}
+
+select,
+input[type="file"] {
+  font-size: 0.95rem;
+}
+
+/* --- status + notes ----------------------------------------------- */
+
+#status {
+  color: #555;
+  min-height: 1.2em;
+  margin: 0.5rem 0;
+}
+
+#note {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+/* --- chart -------------------------------------------------------- */
+
+canvas {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin-top: 0.6rem;
+}
+
+.legend {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 3px;
+  vertical-align: middle;
+  margin-right: 0.35rem;
+}
+
+.swatch-dashed {
+  background: repeating-linear-gradient(90deg, #e0741d 0 6px, transparent 6px 10px);
+}
+
+/* --- metrics table ------------------------------------------------ */
+
+table.metrics {
+  border-collapse: collapse;
+  margin-top: 0.8rem;
+  font-size: 0.95rem;
+}
+
+table.metrics td,
+table.metrics th {
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+table.metrics th {
+  background: #f5f6f8;
+}

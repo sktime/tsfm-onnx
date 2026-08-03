@@ -1,301 +1,56 @@
 <!doctype html>
 <!--
-  t0-alpha in the browser via onnxruntime-web — with real datasets, CSV
-  upload, and a live comparison against the PyTorch library's forecasts.
+  t0-alpha in the browser — markup only.
+  Behavior lives in js/ (ES modules, entry point js/main.js);
+  styles in css/style.css. See webdemo/README.md for the architecture.
 
-  Serve the REPO ROOT (the model + data files must be reachable):
-
-      cd /home/siddharth/work/sktime_erp/t0_onnx
-      python -m http.server 8000        ->  http://localhost:8000/webdemo/
-
-  Prerequisites: run `export_t0_onnx.py`, `quantize_t0_onnx.py` and
-  `make_demo_data.py` first (see README.md).
-
-  Why onnxruntime-web and not transformers.js? transformers.js only runs
-  architectures registered in its library; t0-alpha is custom, so we use
-  onnxruntime-web directly — the same engine transformers.js wraps.
-
-  Graph contract (must match export_t0_onnx.py):
-    input  "context":   float32 [batch, 512], NaN = missing value
-    output "quantiles": float32 [batch, 64, 5], levels [.1 .25 .5 .75 .9]
-  Series shorter than 512 are LEFT-padded with NaN (the model natively
-  understands NaN as "missing"); longer series use their last 512 points.
-
-  The comparison shown for bundled datasets (precomputed by make_demo_data.py
-  with the ORIGINAL library):
-    - "identical input":  library ran on the exact padded 512-window the
-                          browser uses -> isolates ONNX + quantization error.
-    - "natural call":     library ran predict(raw last-512 series), no NaN
-                          padding -> additionally includes the padding effect
-                          (only differs for series shorter than 512).
+  Serve the REPO ROOT so the model + data files are reachable:
+      python -m http.server 8000   ->   http://localhost:8000/webdemo/
 -->
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>t0-alpha browser forecast — ONNX vs library</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; color: #222; }
-  h1 { font-size: 1.4rem; }
-  .controls { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; margin: .8rem 0; }
-  .controls label { font-weight: 600; }
-  select, input[type=file] { font-size: .95rem; }
-  #status { color: #555; min-height: 1.2em; margin: .5rem 0; }
-  #note { color: #777; font-size: .9rem; }
-  canvas { width: 100%; border: 1px solid #ccc; border-radius: 6px; margin-top: .6rem; }
-  table.metrics { border-collapse: collapse; margin-top: .8rem; font-size: .95rem; }
-  table.metrics td, table.metrics th { border: 1px solid #ddd; padding: .35rem .6rem; text-align: left; }
-  table.metrics th { background: #f5f6f8; }
-  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .9rem; margin-top: .5rem; }
-  .swatch { display: inline-block; width: 22px; height: 3px; vertical-align: middle; margin-right: .35rem; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>t0-alpha browser forecast — ONNX vs library</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<h1>t0-alpha — client-side forecasting, checked against the PyTorch library</h1>
+  <h1>t0-alpha — client-side forecasting, checked against the PyTorch library</h1>
 
-<div class="controls">
-  <span><label>Model:</label>
-    <label><input type="radio" name="model" value="int8" checked> int8 (108&nbsp;MB)</label>
-    <label><input type="radio" name="model" value="fp32"> fp32 (411&nbsp;MB)</label>
-  </span>
-  <span><label for="dataset">Dataset:</label> <select id="dataset"></select></span>
-  <span><label for="csv">or upload CSV:</label> <input type="file" id="csv" accept=".csv,text/csv"></span>
-</div>
-<p id="status">loading…</p>
-<p id="note"></p>
-<canvas id="plot" width="1900" height="720"></canvas>
-<div class="legend">
-  <span><span class="swatch" style="background:#2b3440"></span>history (context)</span>
-  <span><span class="swatch" style="background:#9aa3ad"></span>actual future (held out)</span>
-  <span><span class="swatch" style="background:#1d6ee0"></span>ONNX median + 10–90 / 25–75 bands</span>
-  <span><span class="swatch" style="background:repeating-linear-gradient(90deg,#e0741d 0 6px,transparent 6px 10px)"></span>library (PyTorch) median</span>
-</div>
-<div id="metrics"></div>
+  <div class="controls">
+    <span>
+      <label>Model:</label>
+      <label><input type="radio" name="model" value="int8" checked> int8 (108&nbsp;MB)</label>
+      <label><input type="radio" name="model" value="fp32"> fp32 (411&nbsp;MB)</label>
+    </span>
+    <span>
+      <label for="dataset">Dataset:</label>
+      <select id="dataset"></select>
+    </span>
+    <span>
+      <label for="csv">or upload CSV:</label>
+      <input type="file" id="csv" accept=".csv,text/csv">
+    </span>
+  </div>
 
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
-<script>
-"use strict";
+  <p id="status">loading…</p>
+  <p id="note"></p>
 
-/* ---- constants matching the exported graph -------------------------- */
-const CONTEXT_LEN = 512;
-const HORIZON = 64;
-const NQ = 5;                                // quantile levels per step
-const MODELS = {
-  int8: "../onnx/t0-alpha-ctx512-h64-int8.onnx",
-  fp32: "../onnx/t0-alpha-ctx512-h64.onnx",
-};
+  <canvas id="plot" width="1900" height="720"></canvas>
 
-const $ = (id) => document.getElementById(id);
-const status = (m) => ($("status").textContent = m);
+  <div class="legend">
+    <span><span class="swatch" style="background:#2b3440"></span>history (context)</span>
+    <span><span class="swatch" style="background:#9aa3ad"></span>actual future (held out)</span>
+    <span><span class="swatch" style="background:#1d6ee0"></span>ONNX median + 10–90 / 25–75 bands</span>
+    <span><span class="swatch swatch-dashed"></span>library (PyTorch) median</span>
+  </div>
 
-/* ---- state ---------------------------------------------------------- */
-const sessions = {};   // modelKey -> ort.InferenceSession (created lazily, cached)
-let current = null;    // {title, note, context, actuals, refSame, refNatural}
-let forecast = null;   // [HORIZON][NQ] from ONNX
+  <div id="metrics"></div>
 
-/* ---- model loading -------------------------------------------------- */
-async function getSession() {
-  const key = document.querySelector("input[name=model]:checked").value;
-  if (!sessions[key]) {
-    status(`downloading ${key} model (browser-cached after first load)…`);
-    sessions[key] = await ort.InferenceSession.create(MODELS[key], {
-      executionProviders: ["wasm"],
-    });
-  }
-  return sessions[key];
-}
-
-/* ---- input preparation ---------------------------------------------- */
-/* Most recent CONTEXT_LEN points at the right edge, NaN padding on the
-   left. NaN is a *valid* model input meaning "missing" — this is how one
-   fixed-shape graph serves any series length. */
-function toModelInput(context) {
-  const ctx = new Float32Array(CONTEXT_LEN).fill(NaN);
-  const tail = context.slice(-CONTEXT_LEN);
-  ctx.set(tail, CONTEXT_LEN - tail.length);
-  return new ort.Tensor("float32", ctx, [1, CONTEXT_LEN]);
-}
-
-/* ---- forecasting ---------------------------------------------------- */
-async function runForecast() {
-  if (!current) return;
-  const session = await getSession();
-  status("running…");
-  const t0 = performance.now();
-  const out = await session.run({ context: toModelInput(current.context) });
-  const ms = performance.now() - t0;
-  /* Output is a flat Float32Array, row-major [batch, step, level]. */
-  const q = out.quantiles.data;
-  forecast = Array.from({ length: HORIZON }, (_, s) =>
-    Array.from({ length: NQ }, (_, l) => q[s * NQ + l]));
-  status(`forecast in ${ms.toFixed(0)} ms (${document.querySelector("input[name=model]:checked").value}, WASM)`);
-  draw();
-  showMetrics(ms);
-}
-
-/* ---- metrics: how far is the browser from the library? --------------- */
-const flat = (a) => a.flat();
-const spreadOf = (qs) => { const f = flat(qs); return Math.max(...f) - Math.min(...f) || 1; };
-
-function diffStats(a, b) {           // a, b: [HORIZON][NQ]
-  const s = spreadOf(b);
-  let sum = 0, max = 0, n = 0;
-  for (let i = 0; i < a.length; i++) for (let j = 0; j < NQ; j++) {
-    const d = Math.abs(a[i][j] - b[i][j]); sum += d; n++; if (d > max) max = d;
-  }
-  return { mean: sum / n / s, max: max / s };
-}
-
-function mae(median, actuals) {
-  const n = Math.min(median.length, actuals.length);
-  let s = 0;
-  for (let i = 0; i < n; i++) s += Math.abs(median[i] - actuals[i]);
-  return s / n;
-}
-
-function showMetrics(ms) {
-  const rows = [["inference time", `${ms.toFixed(0)} ms`]];
-  if (current.refSame) {
-    const dSame = diffStats(forecast, current.refSame);
-    const dNat = diffStats(forecast, current.refNatural);
-    rows.push(["ONNX vs library, identical padded input (export + quantization error)",
-               `mean ${(dSame.mean * 100).toFixed(2)}% · max ${(dSame.max * 100).toFixed(2)}% of forecast spread`]);
-    rows.push(["ONNX vs library, natural predict() call (adds padding effect)",
-               `mean ${(dNat.mean * 100).toFixed(2)}% · max ${(dNat.max * 100).toFixed(2)}% of forecast spread`]);
-  } else {
-    rows.push(["library reference", "not available for uploaded files — bundled datasets only"]);
-  }
-  if (current.actuals?.length) {
-    const onnxMed = forecast.map((s) => s[2]);
-    rows.push(["MAE vs actual future — ONNX median", mae(onnxMed, current.actuals).toFixed(3)]);
-    if (current.refNatural) {
-      const libMed = current.refNatural.map((s) => s[2]);
-      rows.push(["MAE vs actual future — library median", mae(libMed, current.actuals).toFixed(3)]);
-    }
-  }
-  $("metrics").innerHTML = "<table class='metrics'><tr><th>metric</th><th>value</th></tr>" +
-    rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("") + "</table>";
-}
-
-/* ---- data sources ---------------------------------------------------- */
-async function loadDataset(file) {
-  const d = await (await fetch(`data/${file}`)).json();
-  current = {
-    title: d.title,
-    note: d.note,
-    context: d.values.slice(0, d.values.length - d.holdout),
-    actuals: d.values.slice(d.values.length - d.holdout),
-    refSame: d.ref_same_input,
-    refNatural: d.ref_natural,
-  };
-  $("note").textContent = d.note;
-  forecast = null;
-  await runForecast();
-}
-
-/* Minimal CSV parsing: last column that parses as a number, one value per
-   row, top-to-bottom time order; empty/NA cells become NaN (missing). */
-function parseCsv(text) {
-  const values = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const cells = line.split(/[,;\t]/);
-    const cell = cells[cells.length - 1].trim().replace(/^"|"$/g, "");
-    if (/^(na|nan|null|)$/i.test(cell)) { values.push(NaN); continue; }
-    const v = Number(cell);
-    if (Number.isFinite(v)) values.push(v);
-    /* non-numeric rows (headers) are skipped */
-  }
-  return values;
-}
-
-async function onUpload(fileInput) {
-  const file = fileInput.files[0];
-  if (!file) return;
-  const values = parseCsv(await file.text());
-  if (values.filter(Number.isFinite).length < 8) {
-    status(`could not find a numeric column in ${file.name}`); return;
-  }
-  current = { title: file.name, note: `uploaded: ${values.length} points (last ${Math.min(values.length, CONTEXT_LEN)} used)`,
-              context: values, actuals: [], refSame: null, refNatural: null };
-  $("note").textContent = current.note;
-  $("dataset").value = "";
-  forecast = null;
-  await runForecast();
-}
-
-/* ---- plotting -------------------------------------------------------- */
-function draw() {
-  const cv = $("plot"), g = cv.getContext("2d");
-  g.clearRect(0, 0, cv.width, cv.height);
-  if (!current) return;
-
-  const tail = Math.min(current.context.length, 256);      // readable window
-  const ctxShown = current.context.slice(-tail);
-  const everything = [...ctxShown, ...(current.actuals ?? []),
-                      ...(forecast ? flat(forecast) : []),
-                      ...(current.refNatural ? current.refNatural.map((s) => s[2]) : [])]
-                     .filter(Number.isFinite);
-  const lo = Math.min(...everything), hi = Math.max(...everything);
-  const total = tail + HORIZON;
-  const X = (i) => 64 + (i / (total - 1)) * (cv.width - 84);
-  const Y = (v) => cv.height - 34 - ((v - lo) / (hi - lo || 1)) * (cv.height - 70);
-
-  /* y-axis ticks */
-  g.fillStyle = "#888"; g.font = "20px system-ui"; g.strokeStyle = "#eee"; g.lineWidth = 1;
-  for (let k = 0; k <= 4; k++) {
-    const v = lo + (k / 4) * (hi - lo);
-    g.beginPath(); g.moveTo(64, Y(v)); g.lineTo(cv.width - 20, Y(v)); g.stroke();
-    g.fillText(v.toPrecision(4), 4, Y(v) + 6);
-  }
-  /* forecast-start divider */
-  g.strokeStyle = "#ccc"; g.setLineDash([6, 6]);
-  g.beginPath(); g.moveTo(X(tail - 1), Y(lo)); g.lineTo(X(tail - 1), Y(hi)); g.stroke();
-  g.setLineDash([]);
-
-  const line = (pts, color, width, dash = []) => {
-    g.beginPath(); g.setLineDash(dash);
-    let started = false;
-    for (const [x, y] of pts) {
-      if (!Number.isFinite(y)) { started = false; continue; }  // gap at NaN
-      started ? g.lineTo(x, y) : g.moveTo(x, y); started = true;
-    }
-    g.strokeStyle = color; g.lineWidth = width; g.stroke(); g.setLineDash([]);
-  };
-
-  line(ctxShown.map((v, i) => [X(i), Y(v)]), "#2b3440", 2.5);
-  if (current.actuals?.length)
-    line(current.actuals.map((v, i) => [X(tail + i), Y(v)]), "#9aa3ad", 2.5);
-
-  if (forecast) {
-    const band = (loI, hiI, color) => {
-      g.beginPath();
-      forecast.forEach((qs, i) => g.lineTo(X(tail + i), Y(qs[hiI])));
-      [...forecast].reverse().forEach((qs, i) => g.lineTo(X(tail + HORIZON - 1 - i), Y(qs[loI])));
-      g.closePath(); g.fillStyle = color; g.fill();
-    };
-    band(0, 4, "rgba(70,130,220,.16)");
-    band(1, 3, "rgba(70,130,220,.26)");
-    line(forecast.map((qs, i) => [X(tail + i), Y(qs[2])]), "#1d6ee0", 3);
-  }
-  if (current.refNatural)
-    line(current.refNatural.map((qs, i) => [X(tail + i), Y(qs[2])]), "#e0741d", 2.5, [8, 6]);
-}
-
-/* ---- wiring ---------------------------------------------------------- */
-async function init() {
-  try {
-    const index = await (await fetch("data/index.json")).json();
-    $("dataset").innerHTML = index.map((d) => `<option value="${d.file}">${d.title}</option>`).join("");
-    $("dataset").addEventListener("change", (e) => e.target.value && loadDataset(e.target.value));
-    $("csv").addEventListener("change", (e) => onUpload(e.target));
-    document.querySelectorAll("input[name=model]").forEach((r) =>
-      r.addEventListener("change", runForecast));
-    await loadDataset(index[0].file);   // auto-forecast the first dataset
-  } catch (e) {
-    status("init failed: " + e.message + " — did you run make_demo_data.py and serve the repo root?");
-  }
-}
-init();
-</script>
+  <!-- onnxruntime-web as a classic script tag (defines the global `ort`).
+       Deliberately NOT an ES import: the UMD bundle configures its own
+       .wasm file paths relative to the CDN, so there is zero build step. -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
