@@ -31,6 +31,11 @@
       <label for="csv">or upload CSV:</label>
       <input type="file" id="csv" accept=".csv,text/csv">
     </span>
+    <!-- Appears only when an uploaded CSV has several numeric columns. -->
+    <span id="column-wrap" hidden>
+      <label for="column">Column:</label>
+      <select id="column"></select>
+    </span>
   </div>
 
   <p id="status">loading…</p>

@@ -28,34 +28,58 @@ export async function loadDataset(file) {
   };
 }
 
+const MISSING_CELL = /^(na|nan|null|)$/i;
+const isNumericCell = (cell) => cell !== "" && Number.isFinite(Number(cell));
+
 /**
- * Minimal CSV parsing, no library: one value per row, top-to-bottom time
- * order, last column that parses as a number. Empty/NA cells become NaN
- * (missing — the model handles them). Non-numeric rows (headers) are
- * skipped. Good enough for toy datasets; swap in Papa Parse for gnarly
- * real-world files.
+ * Parse a CSV into NAMED NUMERIC COLUMNS, so multi-column files (e.g. the
+ * Daily Delhi climate set: date, meantemp, humidity, wind_speed,
+ * meanpressure) let the user choose which series to forecast instead of
+ * silently getting an arbitrary column.
+ *
+ * No library: delimiter is auto-detected (comma/semicolon/tab), the first
+ * row is treated as a header when none of its cells are numeric, a column
+ * counts as numeric when at least 60% of its non-missing cells parse as
+ * numbers, and missing cells (empty/NA/NaN/null) become NaN, which the
+ * model understands as "missing". Rows are assumed to be in time order.
+ * Swap in Papa Parse if you need quoting/escaping beyond toy files.
+ *
+ * @returns {{name: string, values: number[]}[]} the numeric columns
  */
-export function parseCsv(text) {
-  const values = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const cells = line.split(/[,;\t]/);
-    const cell = cells[cells.length - 1].trim().replace(/^"|"$/g, "");
-    if (/^(na|nan|null|)$/i.test(cell)) {
-      values.push(NaN);
-      continue;
-    }
-    const v = Number(cell);
-    if (Number.isFinite(v)) values.push(v);
+export function parseCsvColumns(text) {
+  const rows = text.split(/\r?\n/).filter((line) => line.trim());
+  if (!rows.length) return [];
+
+  const delimiter = [",", ";", "\t"].reduce((best, d) =>
+    rows[0].split(d).length > rows[0].split(best).length ? d : best);
+  const grid = rows.map((row) =>
+    row.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, "")));
+
+  const hasHeader = grid[0].every((cell) => !isNumericCell(cell));
+  const header = hasHeader ? grid[0] : [];
+  const body = hasHeader ? grid.slice(1) : grid;
+  if (!body.length) return [];
+
+  const width = Math.max(...grid.map((row) => row.length));
+  const columns = [];
+  for (let j = 0; j < width; j++) {
+    const cells = body.map((row) => row[j] ?? "");
+    const present = cells.filter((cell) => !MISSING_CELL.test(cell));
+    if (!present.length || present.filter(isNumericCell).length / present.length < 0.6) continue;
+    columns.push({
+      name: header[j] || `column ${j + 1}`,
+      values: cells.map((cell) => (MISSING_CELL.test(cell) || !isNumericCell(cell) ? NaN : Number(cell))),
+    });
   }
-  return values;
+  return columns;
 }
 
-export function datasetFromCsv(fileName, values, contextLen) {
+export function datasetFromCsv(fileName, column, contextLen) {
+  const n = column.values.length;
   return {
-    title: fileName,
-    note: `uploaded: ${values.length} points (last ${Math.min(values.length, contextLen)} used)`,
-    context: values,
+    title: `${fileName} (${column.name})`,
+    note: `uploaded: "${column.name}" from ${fileName}, ${n} points (last ${Math.min(n, contextLen)} used)`,
+    context: column.values,
     actuals: [],
     refSame: null,
     refNatural: null,

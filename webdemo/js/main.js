@@ -16,7 +16,7 @@
 
 import { CONTEXT_LEN, MEDIAN_INDEX } from "./config.js";
 import { getSession, forecast } from "./forecaster.js";
-import { loadIndex, loadDataset, parseCsv, datasetFromCsv } from "./data.js";
+import { loadIndex, loadDataset, parseCsvColumns, datasetFromCsv } from "./data.js";
 import { diffStats, mae } from "./metrics.js";
 import { draw } from "./plot.js";
 
@@ -26,6 +26,7 @@ const setStatus = (msg) => ($("status").textContent = msg);
 const state = {
   data: null,      // normalized dataset (see data.js)
   quantiles: null, // ONNX forecast [step][level]
+  upload: null,    // {fileName, columns} of the last uploaded CSV
 };
 
 function selectedModel() {
@@ -86,22 +87,37 @@ async function pickDataset(file) {
   state.data = await loadDataset(file);
   state.quantiles = null;
   $("note").textContent = state.data.note;
+  $("column-wrap").hidden = true;
+  await run();
+}
+
+/** Forecast one column of the uploaded CSV (index into state.upload.columns). */
+async function useUploadColumn(index) {
+  const column = state.upload.columns[index];
+  state.data = datasetFromCsv(state.upload.fileName, column, CONTEXT_LEN);
+  state.quantiles = null;
+  $("note").textContent = state.data.note;
   await run();
 }
 
 async function pickUpload(input) {
   const file = input.files[0];
   if (!file) return;
-  const values = parseCsv(await file.text());
-  if (values.filter(Number.isFinite).length < 8) {
+  // Keep only columns with enough real values to forecast.
+  const columns = parseCsvColumns(await file.text())
+    .filter((c) => c.values.filter(Number.isFinite).length >= 8);
+  if (!columns.length) {
     setStatus(`could not find a numeric column in ${file.name}`);
     return;
   }
-  state.data = datasetFromCsv(file.name, values, CONTEXT_LEN);
-  state.quantiles = null;
-  $("note").textContent = state.data.note;
+  state.upload = { fileName: file.name, columns };
+  $("column").innerHTML = columns
+    .map((c, i) => `<option value="${i}">${c.name}</option>`)
+    .join("");
+  // The picker only matters when there is an actual choice to make.
+  $("column-wrap").hidden = columns.length < 2;
   $("dataset").value = "";
-  await run();
+  await useUploadColumn(0);
 }
 
 async function init() {
@@ -112,6 +128,7 @@ async function init() {
       .join("");
     $("dataset").addEventListener("change", (e) => e.target.value && pickDataset(e.target.value));
     $("csv").addEventListener("change", (e) => pickUpload(e.target));
+    $("column").addEventListener("change", (e) => useUploadColumn(Number(e.target.value)));
     document
       .querySelectorAll("input[name=model]")
       .forEach((r) => r.addEventListener("change", run));
