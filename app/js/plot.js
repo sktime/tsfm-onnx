@@ -1,62 +1,139 @@
 /**
- * Canvas chart: history, held-out actuals, ONNX quantile fan, and the
- * library's median for visual comparison. Plain 2D canvas, no charting
- * library — ~100 lines is cheaper than a dependency here.
+ * Canvas time-series chart: history, actuals, the forecast quantile fan,
+ * and the library reference median. Plain 2D canvas, no charting library.
+ *
+ * Follows the dataviz house rules: 2px lines, ~10% opacity band washes,
+ * hairline solid gridlines, recessive axes, a crosshair + one tooltip that
+ * lists EVERY series at the hovered x (values lead, series names follow,
+ * line keys in the series color), 8px hover markers with a 2px surface
+ * ring, and keyboard navigation (arrow keys) with the same readout.
+ *
+ * All colors come from CSS custom properties on the chart root, so light
+ * and dark themes are handled by the stylesheet and the chart just re-reads
+ * them on redraw().
  */
 
 import { HORIZON, MEDIAN_INDEX } from "./config.js";
 
-const COLORS = {
-  history: "#2b3440",
-  actuals: "#9aa3ad",
-  onnxMedian: "#1d6ee0",
-  bandOuter: "rgba(70,130,220,.16)", // 10–90
-  bandInner: "rgba(70,130,220,.26)", // 25–75
-  libraryMedian: "#e0741d",
-  grid: "#eee",
-  divider: "#ccc",
-  tickText: "#888",
-};
+const WINDOW = 256; // history points shown; older context still feeds the model
 
-/**
- * @param canvas   the <canvas> element
- * @param data     normalized dataset (see data.js)
- * @param quantiles ONNX forecast [step][level], or null before first run
- */
-export function draw(canvas, data, quantiles) {
+export function createChart(root) {
+  const canvas = root.querySelector("canvas");
+  const tooltip = root.querySelector(".chart-tooltip");
   const g = canvas.getContext("2d");
-  g.clearRect(0, 0, canvas.width, canvas.height);
-  if (!data) return;
 
-  // Show at most 256 history points so short-horizon detail stays readable.
-  const tail = Math.min(data.context.length, 256);
-  const shown = data.context.slice(-tail);
+  const state = {
+    data: null,       // normalized dataset (see data.js)
+    quantiles: null,  // ONNX forecast [step][level] or null
+    hover: null,      // window index under the crosshair, or null
+    layout: null,     // computed per draw: scales + geometry
+  };
 
-  // y-range across everything we are about to draw.
-  const everything = [
-    ...shown,
-    ...data.actuals,
-    ...(quantiles ? quantiles.flat() : []),
-    ...(data.refNatural ? data.refNatural.map((s) => s[MEDIAN_INDEX]) : []),
-  ].filter(Number.isFinite);
-  const lo = Math.min(...everything);
-  const hi = Math.max(...everything);
+  /* ---------- public API ---------- */
 
-  const total = tail + HORIZON;
-  const X = (i) => 64 + (i / (total - 1)) * (canvas.width - 84);
-  const Y = (v) => canvas.height - 34 - ((v - lo) / (hi - lo || 1)) * (canvas.height - 70);
+  function setData(data, quantiles) {
+    state.data = data;
+    state.quantiles = quantiles;
+    state.hover = null;
+    hideTooltip();
+    draw();
+  }
 
-  drawGrid(g, canvas, X, Y, lo, hi, tail);
+  function redraw() {
+    draw();
+  }
 
-  const line = (points, color, width, dash = []) => {
+  /* ---------- geometry ---------- */
+
+  function colors() {
+    const s = getComputedStyle(root);
+    const v = (name) => s.getPropertyValue(name).trim();
+    return {
+      surface: v("--surface-1"),
+      grid: v("--grid"),
+      baseline: v("--baseline"),
+      muted: v("--ink-muted"),
+      history: v("--ink-history"),
+      forecast: v("--series-forecast"),
+      reference: v("--series-reference"),
+      actuals: v("--series-actuals"),
+      bandOuter: v("--band-outer"),
+      bandInner: v("--band-inner"),
+    };
+  }
+
+  function layout() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = root.clientWidth;
+    const h = Math.max(280, Math.min(460, Math.round(w * 0.42)));
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.height = `${h}px`;
+    }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const data = state.data;
+    const tail = Math.min(data.context.length, WINDOW);
+    const shown = data.context.slice(-tail);
+    const future = Math.max(HORIZON, data.actuals.length);
+    const total = tail + future;
+
+    const everything = [
+      ...shown,
+      ...data.actuals,
+      ...(state.quantiles ? state.quantiles.flat() : []),
+      ...(data.refNatural ? data.refNatural.map((q) => q[MEDIAN_INDEX]) : []),
+    ].filter(Number.isFinite);
+    let lo = Math.min(...everything);
+    let hi = Math.max(...everything);
+    if (lo === hi) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.06;
+    lo -= pad;
+    hi += pad;
+
+    const m = { left: 56, right: 16, top: 12, bottom: 26 };
+    const X = (i) => m.left + (i / (total - 1)) * (w - m.left - m.right);
+    const Y = (v) => h - m.bottom - ((v - lo) / (hi - lo)) * (h - m.top - m.bottom);
+    return { w, h, m, tail, shown, future, total, lo, hi, X, Y };
+  }
+
+  /* "Nice" tick values: 1/2/5 x 10^k steps covering [lo, hi]. */
+  function ticks(lo, hi, count = 4) {
+    const span = hi - lo;
+    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    const err = span / count / step;
+    const mult = err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+    const s = mult * step;
+    const out = [];
+    for (let v = Math.ceil(lo / s) * s; v <= hi; v += s) out.push(v);
+    return out;
+  }
+
+  /** x label for a window index: a CSV date when available, else a step
+   *  offset relative to the forecast start. */
+  function xLabel(i) {
+    const { tail } = state.layout;
+    const data = state.data;
+    if (i < tail && data.labels) {
+      const orig = data.context.length - tail + i;
+      const label = data.labels[orig];
+      if (label) return label;
+    }
+    const off = i - tail;
+    return off < 0 ? `t−${-off}` : `t+${off + 1}`;
+  }
+
+  /* ---------- drawing ---------- */
+
+  function line(points, color, width, dash = []) {
     g.beginPath();
     g.setLineDash(dash);
+    g.lineJoin = "round";
+    g.lineCap = "round";
     let started = false;
     for (const [x, y] of points) {
-      if (!Number.isFinite(y)) {
-        started = false; // gap where the value is missing (NaN)
-        continue;
-      }
+      if (!Number.isFinite(y)) { started = false; continue; }  // gap at NaN
       started ? g.lineTo(x, y) : g.moveTo(x, y);
       started = true;
     }
@@ -64,54 +141,217 @@ export function draw(canvas, data, quantiles) {
     g.lineWidth = width;
     g.stroke();
     g.setLineDash([]);
-  };
+  }
 
-  line(shown.map((v, i) => [X(i), Y(v)]), COLORS.history, 2.5);
-  line(data.actuals.map((v, i) => [X(tail + i), Y(v)]), COLORS.actuals, 2.5);
+  function draw() {
+    if (!state.data) return;
+    const L = (state.layout = layout());
+    const C = colors();
+    const { w, h, m, tail, shown, total, X, Y } = L;
+    const q = state.quantiles;
+    const data = state.data;
 
-  if (quantiles) {
-    // Shaded band between two quantile levels: forward along the upper
-    // edge, back along the lower.
-    const band = (loIdx, hiIdx, color) => {
+    g.clearRect(0, 0, w, h);
+
+    // Gridlines: hairline, solid, recessive; y ticks in muted ink.
+    g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif';
+    g.fillStyle = C.muted;
+    g.strokeStyle = C.grid;
+    g.lineWidth = 1;
+    for (const v of ticks(L.lo, L.hi)) {
+      const y = Math.round(Y(v)) + 0.5;
       g.beginPath();
-      quantiles.forEach((qs, i) => g.lineTo(X(tail + i), Y(qs[hiIdx])));
-      [...quantiles].reverse().forEach((qs, i) => g.lineTo(X(tail + HORIZON - 1 - i), Y(qs[loIdx])));
-      g.closePath();
-      g.fillStyle = color;
-      g.fill();
-    };
-    band(0, 4, COLORS.bandOuter);
-    band(1, 3, COLORS.bandInner);
-    line(quantiles.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]), COLORS.onnxMedian, 3);
-  }
+      g.moveTo(m.left, y);
+      g.lineTo(w - m.right, y);
+      g.stroke();
+      g.textAlign = "right";
+      g.textBaseline = "middle";
+      g.fillText(Number(v.toPrecision(6)).toLocaleString("en"), m.left - 8, y);
+    }
 
-  if (data.refNatural) {
-    line(
-      data.refNatural.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]),
-      COLORS.libraryMedian, 2.5, [8, 6],
-    );
-  }
-}
-
-function drawGrid(g, canvas, X, Y, lo, hi, tail) {
-  g.fillStyle = COLORS.tickText;
-  g.font = "20px system-ui";
-  g.strokeStyle = COLORS.grid;
-  g.lineWidth = 1;
-  for (let k = 0; k <= 4; k++) {
-    const v = lo + (k / 4) * (hi - lo);
+    // x ticks: about six positions, plus the forecast-start divider.
+    g.textAlign = "center";
+    g.textBaseline = "top";
+    const xStep = Math.max(32, Math.pow(2, Math.ceil(Math.log2(total / 6))));
+    for (let i = tail % xStep; i < total; i += xStep) {
+      g.fillText(xLabel(i), X(i), h - m.bottom + 6);
+    }
+    const xF = Math.round(X(tail)) + 0.5;
+    g.strokeStyle = C.baseline;
+    g.setLineDash([5, 5]);
     g.beginPath();
-    g.moveTo(64, Y(v));
-    g.lineTo(canvas.width - 20, Y(v));
+    g.moveTo(xF, m.top);
+    g.lineTo(xF, h - m.bottom);
     g.stroke();
-    g.fillText(v.toPrecision(4), 4, Y(v) + 6);
+    g.setLineDash([]);
+
+    // Baseline.
+    g.strokeStyle = C.baseline;
+    g.beginPath();
+    g.moveTo(m.left, Math.round(h - m.bottom) + 0.5);
+    g.lineTo(w - m.right, Math.round(h - m.bottom) + 0.5);
+    g.stroke();
+
+    // Quantile bands: series-hue washes (outer 10-90, inner 25-75).
+    if (q) {
+      const band = (loI, hiI, color) => {
+        g.beginPath();
+        q.forEach((qs, i) => g.lineTo(X(tail + i), Y(qs[hiI])));
+        [...q].reverse().forEach((qs, i) => g.lineTo(X(tail + HORIZON - 1 - i), Y(qs[loI])));
+        g.closePath();
+        g.fillStyle = color;
+        g.fill();
+      };
+      band(0, 4, C.bandOuter);
+      band(1, 3, C.bandInner);
+    }
+
+    // Lines: history joins the forecast start; actuals continue history.
+    line(shown.map((v, i) => [X(i), Y(v)]), C.history, 2);
+    if (data.actuals.length) {
+      const joined = [[X(tail - 1), Y(shown[tail - 1])], ...data.actuals.map((v, i) => [X(tail + i), Y(v)])];
+      line(joined, C.actuals, 2);
+    }
+    if (data.refNatural) {
+      line(data.refNatural.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]), C.reference, 2, [7, 5]);
+    }
+    if (q) {
+      line(q.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]), C.forecast, 2);
+    }
+
+    if (state.hover !== null) drawHover(L, C);
   }
-  // Vertical divider where history ends and the forecast begins.
-  g.strokeStyle = COLORS.divider;
-  g.setLineDash([6, 6]);
-  g.beginPath();
-  g.moveTo(X(tail - 1), Y(lo));
-  g.lineTo(X(tail - 1), Y(hi));
-  g.stroke();
-  g.setLineDash([]);
+
+  /* ---------- hover: crosshair + markers + tooltip ---------- */
+
+  function seriesAt(i) {
+    const { tail } = state.layout;
+    const data = state.data;
+    const rows = [];
+    if (i < tail) {
+      rows.push({ name: "history", color: colors().history, value: state.data.context[data.context.length - tail + i] });
+    } else {
+      const k = i - tail;
+      if (Number.isFinite(data.actuals[k])) {
+        rows.push({ name: "actual", color: colors().actuals, value: data.actuals[k] });
+      }
+      if (state.quantiles && k < HORIZON) {
+        const qs = state.quantiles[k];
+        rows.push({ name: "forecast median", color: colors().forecast, value: qs[MEDIAN_INDEX] });
+        rows.push({ name: "10–90 band", color: colors().forecast, value: qs[0], value2: qs[4] });
+      }
+      if (data.refNatural && k < HORIZON) {
+        rows.push({ name: "library median", color: colors().reference, value: data.refNatural[k][MEDIAN_INDEX] });
+      }
+    }
+    return rows.filter((r) => Number.isFinite(r.value));
+  }
+
+  function drawHover(L, C) {
+    const i = state.hover;
+    const x = Math.round(L.X(i)) + 0.5;
+    g.strokeStyle = C.baseline;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(x, L.m.top);
+    g.lineTo(x, L.h - L.m.bottom);
+    g.stroke();
+    // 8px markers with a 2px surface ring so they read over the lines.
+    for (const row of seriesAt(i)) {
+      for (const v of [row.value, row.value2]) {
+        if (!Number.isFinite(v)) continue;
+        g.beginPath();
+        g.arc(L.X(i), L.Y(v), 6, 0, Math.PI * 2);
+        g.fillStyle = C.surface;
+        g.fill();
+        g.beginPath();
+        g.arc(L.X(i), L.Y(v), 4, 0, Math.PI * 2);
+        g.fillStyle = row.color;
+        g.fill();
+      }
+    }
+  }
+
+  const fmt = (v) => Number(v.toPrecision(5)).toLocaleString("en");
+
+  /** Tooltip DOM via textContent only — series/category names originate in
+   *  user CSV headers and are untrusted. */
+  function showTooltip(i, pointerX) {
+    const rows = seriesAt(i);
+    if (!rows.length) { hideTooltip(); return; }
+    tooltip.replaceChildren();
+    const title = document.createElement("div");
+    title.className = "tt-title";
+    title.textContent = xLabel(i);
+    tooltip.appendChild(title);
+    for (const row of rows) {
+      const div = document.createElement("div");
+      div.className = "tt-row";
+      const key = document.createElement("span");
+      key.className = "tt-key";
+      key.style.background = row.color;
+      const value = document.createElement("span");
+      value.className = "tt-value";
+      value.textContent = Number.isFinite(row.value2) ? `${fmt(row.value)} – ${fmt(row.value2)}` : fmt(row.value);
+      const name = document.createElement("span");
+      name.className = "tt-name";
+      name.textContent = row.name;
+      div.append(key, value, name);
+      tooltip.appendChild(div);
+    }
+    tooltip.hidden = false;
+    const half = root.clientWidth / 2;
+    tooltip.style.left = pointerX < half ? `${pointerX + 16}px` : "auto";
+    tooltip.style.right = pointerX < half ? "auto" : `${root.clientWidth - pointerX + 16}px`;
+    tooltip.style.top = `${state.layout.m.top + 8}px`;
+  }
+
+  function hideTooltip() {
+    tooltip.hidden = true;
+  }
+
+  function setHover(i, pointerX) {
+    const { total, X } = state.layout;
+    state.hover = Math.max(0, Math.min(total - 1, i));
+    draw();
+    showTooltip(state.hover, pointerX ?? X(state.hover));
+  }
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (!state.layout) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const { m, total } = state.layout;
+    const frac = (px - m.left) / (state.layout.w - m.left - m.right);
+    setHover(Math.round(frac * (total - 1)), px);
+  });
+  canvas.addEventListener("pointerleave", () => {
+    state.hover = null;
+    hideTooltip();
+    draw();
+  });
+  // Keyboard gets the same readout as hover (never gate on the pointer).
+  canvas.addEventListener("keydown", (e) => {
+    if (!state.layout) return;
+    const { tail, total } = state.layout;
+    const step = e.shiftKey ? 8 : 1;
+    let i = state.hover ?? tail;
+    if (e.key === "ArrowLeft") i -= step;
+    else if (e.key === "ArrowRight") i += step;
+    else if (e.key === "Home") i = 0;
+    else if (e.key === "End") i = total - 1;
+    else if (e.key === "Escape") { state.hover = null; hideTooltip(); draw(); return; }
+    else return;
+    e.preventDefault();
+    setHover(i);
+  });
+  canvas.addEventListener("blur", () => {
+    state.hover = null;
+    hideTooltip();
+    draw();
+  });
+
+  new ResizeObserver(() => state.data && draw()).observe(root);
+
+  return { setData, redraw };
 }

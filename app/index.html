@@ -1,61 +1,124 @@
 <!doctype html>
 <!--
-  t0-alpha in the browser — markup only.
-  Behavior lives in js/ (ES modules, entry point js/main.js);
-  styles in css/style.css. See webdemo/README.md for the architecture.
+  t0 forecast - zero-shot time-series forecasting, entirely in the browser.
+  Markup only; behavior in js/ (entry: js/main.js), styles in css/style.css.
+  See README.md in this folder for the architecture.
 
-  Serve the REPO ROOT so the model + data files are reachable:
-      python -m http.server 8000   ->   http://localhost:8000/webdemo/
+  Local run: serve the REPO ROOT (models live in ../onnx/):
+      python -m http.server 8000   ->   http://localhost:8000/app/
+  Public hosting: see the "Hosting" section of the repo README.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>t0-alpha browser forecast — ONNX vs library</title>
+  <meta name="description" content="Zero-shot probabilistic time-series forecasting with The Forecasting Company's t0-alpha model, running locally in your browser via ONNX Runtime. Upload a CSV, get quantile forecasts. No server, no upload.">
+  <title>t0 forecast — time-series forecasting in your browser</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>t0-alpha — client-side forecasting, checked against the PyTorch library</h1>
+<div class="page">
 
-  <div class="controls">
-    <span>
-      <label>Model:</label>
-      <label><input type="radio" name="model" value="int8" checked> int8 (108&nbsp;MB)</label>
-      <label><input type="radio" name="model" value="fp32"> fp32 (411&nbsp;MB)</label>
-    </span>
-    <span>
-      <label for="dataset">Dataset:</label>
-      <select id="dataset"></select>
-    </span>
-    <span>
-      <label for="csv">or upload CSV:</label>
-      <input type="file" id="csv" accept=".csv,text/csv">
-    </span>
-    <!-- Appears only when an uploaded CSV has several numeric columns. -->
-    <span id="column-wrap" hidden>
-      <label for="column">Column:</label>
-      <select id="column"></select>
-    </span>
+  <header class="masthead">
+    <div class="mast-line">
+      <span class="brand">t0&nbsp;forecast</span>
+      <span class="mast-note">zero-shot time-series forecasting, in your browser</span>
+      <span class="mast-actions">
+        <button id="theme" type="button" title="Cycle theme: auto / light / dark">theme: auto</button>
+        <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
+      </span>
+    </div>
+    <p class="privacy">Runs entirely on your device — data you load here never leaves the browser.</p>
+  </header>
+
+  <section class="panel" aria-label="Data and options">
+    <div class="field">
+      <span class="field-label">Data</span>
+      <select id="dataset" aria-label="Bundled dataset"></select>
+      <label id="dropzone" for="csv">
+        <input type="file" id="csv" accept=".csv,text/csv">
+        <span class="dz-strong">Upload CSV</span>
+        <span class="dz-hint">or drop a file — one value per row, newest last</span>
+      </label>
+    </div>
+
+    <div class="field" id="column-field" hidden>
+      <span class="field-label">Series</span>
+      <select id="column" aria-label="CSV column to forecast"></select>
+      <label class="check" id="joint-wrap" hidden>
+        <input type="checkbox" id="joint">
+        forecast all columns jointly <span class="dim">(multivariate)</span>
+      </label>
+    </div>
+
+    <div class="field" id="compare-field" hidden>
+      <span class="field-label">Check against</span>
+      <label class="check"><input type="radio" name="compare" value="none" checked> nothing</label>
+      <label class="check"><input type="radio" name="compare" value="holdout"> backtest: hold out last 64</label>
+      <label class="check"><input type="radio" name="compare" value="testfile"> test CSV</label>
+      <label id="testzone" for="testcsv" hidden>
+        <input type="file" id="testcsv" accept=".csv,text/csv">
+        <span class="dz-strong">Upload test CSV</span>
+        <span class="dz-hint">the actual future, for comparison</span>
+      </label>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Model</span>
+      <label class="check"><input type="radio" name="model" value="int8" checked> int8 <span class="dim">108 MB, fastest to load</span></label>
+      <label class="check"><input type="radio" name="model" value="fp32"> fp32 <span class="dim">411 MB, exact</span></label>
+    </div>
+  </section>
+
+  <div class="status-row">
+    <span id="status" role="status">loading…</span>
+    <progress id="progress" max="100" value="0" hidden></progress>
   </div>
 
-  <p id="status">loading…</p>
-  <p id="note"></p>
+  <section class="chart-card" aria-label="Forecast chart">
+    <div class="chart-head">
+      <h1 id="title">—</h1>
+      <p id="note" class="dim"></p>
+    </div>
+    <div class="chart-root" id="chart">
+      <canvas tabindex="0" aria-label="Forecast chart. Use arrow keys to read values."></canvas>
+      <div class="chart-tooltip" hidden></div>
+    </div>
+    <div class="legend" aria-hidden="false">
+      <span id="lg-history"><span class="key key-history"></span>history</span>
+      <span id="lg-actuals" hidden><span class="key key-actuals"></span>actuals</span>
+      <span id="lg-forecast"><span class="key key-forecast"></span>forecast median <span class="key-band"></span>10–90 / 25–75</span>
+      <span id="lg-library" hidden><span class="key key-library"></span>library median (PyTorch)</span>
+    </div>
+  </section>
 
-  <canvas id="plot" width="1900" height="720"></canvas>
+  <section class="tiles" id="metrics" aria-label="Metrics"></section>
 
-  <div class="legend">
-    <span><span class="swatch" style="background:#2b3440"></span>history (context)</span>
-    <span><span class="swatch" style="background:#9aa3ad"></span>actual future (held out)</span>
-    <span><span class="swatch" style="background:#1d6ee0"></span>ONNX median + 10–90 / 25–75 bands</span>
-    <span><span class="swatch swatch-dashed"></span>library (PyTorch) median</span>
-  </div>
+  <details class="table-view">
+    <summary>Forecast table</summary>
+    <div class="table-actions">
+      <button id="download" type="button">Download forecast CSV</button>
+    </div>
+    <div id="table-wrap" class="table-wrap"></div>
+  </details>
 
-  <div id="metrics"></div>
+  <footer>
+    <p>
+      Model: <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">t0-alpha</a>
+      by <a href="https://theforecastingcompany.com" target="_blank" rel="noopener">The Forecasting Company</a>
+      (Apache-2.0, gated weights) · engine: <a href="https://onnxruntime.ai" target="_blank" rel="noopener">ONNX Runtime Web</a>
+      · unofficial project, not affiliated with The Forecasting Company
+      · <a href="https://github.com/" target="_blank" rel="noopener" id="source-link">source</a>
+    </p>
+    <p class="dim">Forecasts are statistical estimates, not guarantees. Context is capped at the most recent 512 points; horizon is 64 steps.</p>
+  </footer>
 
-  <!-- onnxruntime-web as a classic script tag (defines the global `ort`).
-       Deliberately NOT an ES import: the UMD bundle configures its own
-       .wasm file paths relative to the CDN, so there is zero build step. -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
-  <script type="module" src="js/main.js"></script>
+</div>
+
+<!-- onnxruntime-web as a classic script (defines the global `ort`); the UMD
+     bundle resolves its .wasm binaries from the CDN, so there is no build
+     step anywhere in this app. -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
