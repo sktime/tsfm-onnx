@@ -115,7 +115,7 @@ chosen inference path exactly:
 - Mirror the original slicing/indexing *exactly* (off-by-one-patch bugs are
   silent); cite the source lines in comments.
 
-See `export_t0_onnx.py` for a worked example of all of the above.
+See `scripts/export_t0_onnx.py` for a worked example of all of the above.
 
 ## 6. Step 4 — export
 
@@ -155,7 +155,7 @@ Failures come at three gates; identify the gate first, then apply its move:
    missing symbolic if ONNX has the op anyway.
 2. **Load-time** (ORT `ShapeInferenceError`/`Fail` on session creation: the
    graph itself is inconsistent). Move: inspect the named node —
-   `python inspect_onnx.py model.onnx --node <name>` — look at its dtypes,
+   `python scripts/inspect_onnx.py model.onnx --node <name>` — look at its dtypes,
    shapes, and axis attributes; work out which source line produced it and
    rewrite that line export-safely.
 3. **Run-time** (`NOT_IMPLEMENTED: Could not find an implementation for X`).
@@ -200,14 +200,14 @@ disappoints, the next rung is static quantization with calibration data.
   (`data[step * Q + level]`).
 - The WASM EP's kernel coverage ≠ native CPU's — smoke-test in the actual
   browser before declaring victory. Check `onnxruntime-web`'s version
-  supports your file's IR/opset (`inspect_onnx.py model.onnx` prints both).
+  supports your file's IR/opset (`scripts/inspect_onnx.py model.onnx` prints both).
 - Serve over HTTP (`python -m http.server`) — `file://` fetches fail.
 
 See `webdemo/index.html` for the full integration.
 
 ## 11. The toolbox
 
-- `inspect_onnx.py` (this repo) — summary, op histogram, per-node
+- `scripts/inspect_onnx.py` (this repo) — summary, op histogram, per-node
   dtype/shape/producer/consumer dumps, `--check` (checker → shape inference
   → ORT load = the three gates in order).
 - [netron.app](https://netron.app) — visual graph browser; great for small

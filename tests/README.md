@@ -2,7 +2,7 @@
 
 Verifies both exported models under **onnxruntime-web's WASM kernels** — the
 exact engine the browser demo uses — against native ONNX Runtime outputs.
-This catches per-runtime kernel gaps (see LOGBOOK §8: a graph that native
+This catches per-runtime kernel gaps (see [docs/LOGBOOK.md](../docs/LOGBOOK.md) §8: a graph that native
 ORT runs can still fail on another engine) without needing a browser.
 
 ```bash

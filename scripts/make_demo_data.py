@@ -29,7 +29,7 @@ history matters.
 
 Everything lands in webdemo/data/ as JSON + an index the page discovers.
 
-Usage:  .venv-export/bin/python make_demo_data.py
+Usage:  .venv-export/bin/python scripts/make_demo_data.py
 """
 
 import json
@@ -40,6 +40,8 @@ from pathlib import Path
 import torch
 
 from t0 import T0Forecaster
+
+ROOT = Path(__file__).resolve().parents[1]
 
 CONTEXT_LEN = 512  # must match the exported graph (export_t0_onnx.py)
 HORIZON = 64
@@ -91,7 +93,7 @@ def to_browser_input(context: list[float]) -> torch.Tensor:
 
 
 def main() -> None:
-    out_dir = Path("webdemo/data")
+    out_dir = ROOT / "webdemo" / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("loading t0-alpha (original library, no export patches)...")

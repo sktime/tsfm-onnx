@@ -117,7 +117,7 @@ async function init() {
       .forEach((r) => r.addEventListener("change", run));
     await pickDataset(index[0].file); // auto-forecast the first dataset
   } catch (e) {
-    setStatus(`init failed: ${e.message} — did you run make_demo_data.py and serve the repo root?`);
+    setStatus(`init failed: ${e.message} — did you run scripts/make_demo_data.py and serve the repo root?`);
   }
 }
 

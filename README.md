@@ -1,143 +1,155 @@
 # t0-alpha in the browser
 
-**Client-side time-series forecasting**: [The Forecasting Company](https://theforecastingcompany.com)'s
-[t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha) foundation
-model, exported from PyTorch to ONNX and running entirely in the browser via
-[onnxruntime-web](https://onnxruntime.ai/docs/tutorials/web/) — no server, no
-Python, forecasts in ~100 ms.
+###  Used Claude Fable 5 in different parts of the project.
 
-This is also a **worked, documented case study of exporting a custom PyTorch
-model to ONNX**: every design decision, failure, and fix is written up so you
-can repeat the process on other models.
+This project takes [The Forecasting Company](https://theforecastingcompany.com)'s
+[t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha) time-series
+foundation model, exports it from PyTorch to ONNX, and runs it entirely in the
+browser with [onnxruntime-web](https://onnxruntime.ai/docs/tutorials/web/).
+There is no server and no Python at inference time, and a full probabilistic
+forecast takes about 100 milliseconds.
 
-> ⚠️ Unofficial community project — not affiliated with or endorsed by
-> The Forecasting Company.
+The repository is also a worked case study of exporting a custom PyTorch model
+to ONNX. Every design decision, failure, and fix is documented, so the same
+process can be repeated on other models.
+
+> Note: this is an unofficial project that is not affiliated with or endorsed
+> by The Forecasting Company.
 
 ## Highlights
 
-- ✅ **Faithful export** — the ONNX graph matches the library's
-  `model.predict()` to `1.7e-05` (fp32), verified against the original
-  implementation on every run of the export script.
-- 📦 **Browser-sized** — int8 quantization shrinks 411 MB → **108 MB**
-  (mean drift ≈ 3.3% of forecast spread; the fp32 model is one radio button
-  away when fidelity matters).
-- ⚡ **Fast** — ~80–120 ms per 64-step probabilistic forecast under WASM,
-  verified against native ONNX Runtime to ~1e-5 in [tests/](tests/README.md).
-- 📊 **Honest demo** — forecasts real classic datasets (airline passengers,
-  Melbourne temperatures, sunspots) *with the PyTorch library's own
-  forecasts overlaid*, so the browser-vs-library difference is measured on
-  screen, not asserted. CSV upload included.
-- 📚 **Teaching materials** — a from-zero [export guide](ONNX_EXPORT_GUIDE.md)
-  and a [debugging logbook](LOGBOOK.md) of every problem hit along the way.
+- **Faithful export.** The ONNX graph matches the library's `model.predict()`
+  to a maximum difference of 1.7e-05 in float32, and the export script checks
+  this against the original implementation on every run.
+- **Browser-sized.** Int8 quantization shrinks the model from 411 MB to
+  108 MB, at the cost of a mean drift of about 3.3% of the forecast spread.
+  When fidelity matters more than download size, the demo can switch to the
+  fp32 model with one radio button.
+- **Fast.** A 64-step probabilistic forecast takes 80 to 120 milliseconds
+  under WASM, and the engine's outputs are checked against native ONNX
+  Runtime in [tests/](tests/README.md).
+- **An honest demo.** The demo forecasts real classic datasets (airline
+  passengers, Melbourne temperatures, and sunspots) while overlaying the
+  PyTorch library's own forecasts, so the difference between the browser and
+  the library is measured on screen instead of merely being asserted. You can
+  also upload your own CSV files.
+- **Teaching materials.** A from-zero [export guide](docs/ONNX_EXPORT_GUIDE.md)
+  explains how to export any model, and a [debugging logbook](docs/LOGBOOK.md)
+  records every problem that came up along the way.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A["t0-alpha weights<br/>(Hugging Face, gated)"] --> B["export_t0_onnx.py<br/>wrapper + dynamo export<br/>+ validation vs predict()"]
+    A["t0-alpha weights<br/>(Hugging Face, gated)"] --> B["scripts/export_t0_onnx.py<br/>wrapper + dynamo export<br/>+ validation vs predict()"]
     B --> C["t0-alpha-ctx512-h64.onnx<br/>411 MB fp32"]
-    C --> D["quantize_t0_onnx.py<br/>dynamic int8"]
-    D --> E["…-int8.onnx<br/>108 MB"]
+    C --> D["scripts/quantize_t0_onnx.py<br/>dynamic int8"]
+    D --> E["t0-alpha-ctx512-h64-int8.onnx<br/>108 MB"]
     E --> F["webdemo/<br/>onnxruntime-web (WASM)"]
-    G["make_demo_data.py<br/>real datasets + PyTorch<br/>reference forecasts"] --> F
+    G["scripts/make_demo_data.py<br/>real datasets + PyTorch<br/>reference forecasts"] --> F
 ```
 
-The exported graph is one fixed-shape forward pass:
+The exported graph is a single fixed-shape forward pass:
 
 ```
 input   context    float32 [batch, 512]    NaN = missing value
 output  quantiles  float32 [batch, 64, 5]  levels [0.1, 0.25, 0.5, 0.75, 0.9]
 ```
 
-Variable-length series work because t0-alpha natively treats NaN as
-"missing": shorter series are left-padded with NaN — a valid model input,
-not an approximation. Batch is dynamic; context length and horizon are
-baked in (re-export with `--context-len/--horizon` for other variants).
+Series of any length work because t0-alpha treats NaN as a missing value,
+which it was trained to handle. A shorter series is therefore left-padded
+with NaN, and the padded series is a valid model input rather than an
+approximation. The batch dimension is dynamic, while the context length and
+the horizon are baked into the graph, so if you need other sizes you
+re-export with `--context-len` and `--horizon`.
 
 ## Getting started
 
-**Prerequisites**: [uv](https://docs.astral.sh/uv/) (or plain pip),
-~1.5 GB disk, and access to the gated
-[t0-alpha weights](https://huggingface.co/theforecastingcompany/t0-alpha)
-(request access on the model page, then `hf auth login`).
+You will need [uv](https://docs.astral.sh/uv/) or plain pip, about 1.5 GB of
+disk space, and access to the gated
+[t0-alpha weights](https://huggingface.co/theforecastingcompany/t0-alpha).
+Request access on the model page, then run `hf auth login`.
 
 ```bash
-# 1. Export environment (Python 3.12 + CPU torch, matching tfc-t0's support window)
+# 1. Create the export environment (Python 3.12 with CPU torch, matching tfc-t0's support window)
 uv venv --python 3.12 .venv-export
 uv pip install -p .venv-export torch --index-url https://download.pytorch.org/whl/cpu
 uv pip install -p .venv-export tfc-t0 onnx onnxscript onnxruntime
 
-# 2. Export + validate against the original library
-.venv-export/bin/python export_t0_onnx.py          # -> onnx/t0-alpha-ctx512-h64.onnx
+# 2. Export the model and validate it against the original library
+.venv-export/bin/python scripts/export_t0_onnx.py     # writes onnx/t0-alpha-ctx512-h64.onnx
 
-# 3. Quantize for the web
-.venv-export/bin/python quantize_t0_onnx.py        # -> onnx/...-int8.onnx
+# 3. Quantize it for the web
+.venv-export/bin/python scripts/quantize_t0_onnx.py   # writes onnx/t0-alpha-ctx512-h64-int8.onnx
 
-# 4. Demo datasets + PyTorch reference forecasts
-.venv-export/bin/python make_demo_data.py          # -> webdemo/data/
+# 4. Prepare the demo datasets and the PyTorch reference forecasts
+.venv-export/bin/python scripts/make_demo_data.py     # writes webdemo/data/
 
-# 5. Serve and open
-python -m http.server 8000                          # from the repo root
-# -> http://localhost:8000/webdemo/
+# 5. Serve the repo root and open the demo
+python -m http.server 8000
+# then open http://localhost:8000/webdemo/
 ```
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| [`export_t0_onnx.py`](export_t0_onnx.py) | PyTorch → ONNX export with strict numeric validation; extensively commented (export boundary, fixed-vs-dynamic shapes, every monkeypatch) |
-| [`quantize_t0_onnx.py`](quantize_t0_onnx.py) | int8 dynamic quantization + accuracy-drift report |
-| [`inspect_onnx.py`](inspect_onnx.py) | CLI to look inside any `.onnx`: op histograms, per-node dtype/shape dumps, three-gate `--check` |
-| [`make_demo_data.py`](make_demo_data.py) | downloads the demo datasets and precomputes library reference forecasts |
-| [`webdemo/`](webdemo/README.md) | the browser app — vanilla ES modules, no build step ([architecture](webdemo/README.md)) |
-| [`tests/`](tests/README.md) | Node-based regression test of both models under onnxruntime-web's WASM kernels |
-| [`ONNX_EXPORT_GUIDE.md`](ONNX_EXPORT_GUIDE.md) | how to export **any** PyTorch model to ONNX, assuming zero ONNX knowledge |
-| [`LOGBOOK.md`](LOGBOOK.md) | chronological journal of every problem this conversion hit: symptom → diagnosis → fix → lesson |
-| [`unvariate_t0.py`](unvariate_t0.py) | the original PyTorch quickstart from the model card |
+| [`scripts/export_t0_onnx.py`](scripts/export_t0_onnx.py) | Exports PyTorch to ONNX with strict numeric validation. The comments explain the export boundary, the shape decisions, and every monkeypatch. |
+| [`scripts/quantize_t0_onnx.py`](scripts/quantize_t0_onnx.py) | Performs int8 dynamic quantization and reports the accuracy drift. |
+| [`scripts/inspect_onnx.py`](scripts/inspect_onnx.py) | A CLI for looking inside any `.onnx` file, with op histograms, per-node dtype and shape dumps, and a three-gate `--check`. |
+| [`scripts/make_demo_data.py`](scripts/make_demo_data.py) | Downloads the demo datasets and precomputes the library's reference forecasts. |
+| [`webdemo/`](webdemo/README.md) | The browser app, written as vanilla ES modules with no build step. Its [README](webdemo/README.md) documents the architecture. |
+| [`tests/`](tests/README.md) | Node-based regression tests that run both models under onnxruntime-web's WASM kernels. |
+| [`docs/ONNX_EXPORT_GUIDE.md`](docs/ONNX_EXPORT_GUIDE.md) | Explains how to export any PyTorch model to ONNX, assuming no prior ONNX knowledge. |
+| [`docs/LOGBOOK.md`](docs/LOGBOOK.md) | A chronological journal of every problem this conversion hit, with the symptom, the diagnosis, the fix, and the lesson for each. |
+| [`examples/predict_pytorch.py`](examples/predict_pytorch.py) | The original PyTorch quickstart from the model card. |
 
 ## Measured results
 
 | Check | Result |
 |---|---|
-| ONNX (fp32) vs `model.predict()`, identical input | max abs diff **1.7e-05** |
-| int8 vs fp32 forecast drift | mean **≈ 3.3%**, max ≈ 12% of forecast spread |
-| onnxruntime-web (WASM) vs native ONNX Runtime | ≤ **1.5e-05** |
-| Inference latency (WASM, single thread) | **~80–120 ms** per forecast |
-| NaN-padding vs natural short-series call | ≈ 11% of spread (airline, 108 pts) |
-| 512-point context budget vs full history | 12% (temperatures) – 55% (sunspots: the ~11-year cycle wants a longer `--context-len`) |
+| ONNX (fp32) vs `model.predict()` on identical input | max abs diff 1.7e-05 |
+| int8 vs fp32 forecast drift | mean about 3.3%, max about 12% of forecast spread |
+| onnxruntime-web (WASM) vs native ONNX Runtime | at most 1.5e-05 |
+| Inference latency (WASM, single thread) | 80 to 120 ms per forecast |
+| NaN padding vs a natural short-series call | about 11% of spread (airline, 108 points) |
+| 512-point context budget vs full history | 12% (temperatures) to 55% (sunspots, whose 11-year cycle wants a longer `--context-len`) |
 
-The last two rows are properties of the fixed-shape deployment, not export
-error — the demo reports them separately for exactly that reason.
+The last two rows measure properties of the fixed-shape deployment rather
+than export error, which is why the demo reports them separately.
 
 ## Limitations
 
-- Univariate forecasting only; the library's future-covariates path is not
-  exported (see `ONNX_EXPORT_GUIDE.md` §4 for how you would).
-- One fixed context length per graph (512 here). Long-memory series
-  (e.g. sunspots) benefit from re-exporting with a larger `--context-len`.
-- Horizons beyond 1024 steps would need the library's autoregressive
+- Only univariate forecasting is exported. The library's future-covariates
+  path is not included, although the export guide explains how you would add
+  it.
+- Each graph has one fixed context length, 512 in this case, so series with
+  long memory, such as sunspots, benefit from re-exporting with a larger
+  `--context-len`.
+- Horizons beyond 1024 steps would require the library's autoregressive
   rollout, which lives outside the single-pass graph.
 
 ## Attribution
 
-- **Model & library**: [t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha)
-  and [tfc-t0](https://github.com/theforecastingcompany/tfc-t0) by
-  **The Forecasting Company**, Apache-2.0, weights gated on Hugging Face.
-  `export_t0_onnx.py` contains export-safe adaptations of several tfc-t0
-  inference functions (see [NOTICE](NOTICE)).
-- **Architecture heritage** (per tfc-t0's source headers):
-  [Toto](https://github.com/DataDog/toto) (Datadog) and
-  [Chronos](https://github.com/amazon-science/chronos-forecasting) (Amazon
-  Science), both Apache-2.0.
-- **Datasets**: Box & Jenkins airline passengers; Melbourne daily minimum
-  temperatures (Australian Bureau of Meteorology); monthly sunspots (SIDC,
-  Royal Observatory of Belgium) — via
-  [jbrownlee/Datasets](https://github.com/jbrownlee/Datasets).
-- **Runtime**: [ONNX Runtime](https://onnxruntime.ai) (Microsoft, MIT).
+- **Model and library**: [t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha)
+  and [tfc-t0](https://github.com/theforecastingcompany/tfc-t0) are built by
+  **The Forecasting Company** and released under Apache-2.0, with the weights
+  gated on Hugging Face. The export script contains export-safe adaptations
+  of several tfc-t0 inference functions, which are listed in [NOTICE](NOTICE).
+- **Architecture heritage**: according to tfc-t0's source headers, parts of
+  the architecture derive from [Toto](https://github.com/DataDog/toto) by
+  Datadog and [Chronos](https://github.com/amazon-science/chronos-forecasting)
+  by Amazon Science, both Apache-2.0.
+- **Datasets**: the Box and Jenkins airline passengers series, the Melbourne
+  daily minimum temperatures from the Australian Bureau of Meteorology, and
+  the monthly sunspot counts from SIDC at the Royal Observatory of Belgium,
+  all fetched via [jbrownlee/Datasets](https://github.com/jbrownlee/Datasets).
+- **Runtime**: [ONNX Runtime](https://onnxruntime.ai) by Microsoft, MIT
+  licensed.
 
 ## License
 
-[Apache-2.0](LICENSE) for the code in this repository (see
-[NOTICE](NOTICE)). The t0-alpha **model weights are not included** — they
-are distributed by The Forecasting Company under their own terms and gated
-access on Hugging Face.
+The code in this repository is licensed under [Apache-2.0](LICENSE); see
+[NOTICE](NOTICE) for attribution details. The t0-alpha model weights are not
+included, since The Forecasting Company distributes them under their own
+terms and gated access on Hugging Face.

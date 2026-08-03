@@ -5,7 +5,7 @@ Run inside a supported environment (Python 3.11-3.13, torch >= 2.4):
     uv venv --python 3.12 .venv-export
     uv pip install -p .venv-export torch --index-url https://download.pytorch.org/whl/cpu
     uv pip install -p .venv-export tfc-t0 onnx onnxscript onnxruntime
-    .venv-export/bin/python export_t0_onnx.py
+    .venv-export/bin/python scripts/export_t0_onnx.py
 
 The exported graph:
 
@@ -63,6 +63,9 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+
+# Repo root, so the script works from any working directory.
+ROOT = Path(__file__).resolve().parents[1]
 
 import t0.scaler as t0_scaler
 from t0 import T0Forecaster
@@ -273,7 +276,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=None, help="output path (.onnx)")
     args = parser.parse_args()
 
-    out = args.out or Path(f"onnx/t0-alpha-ctx{args.context_len}-h{args.horizon}.onnx")
+    out = args.out or ROOT / "onnx" / f"t0-alpha-ctx{args.context_len}-h{args.horizon}.onnx"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print("loading model...")
