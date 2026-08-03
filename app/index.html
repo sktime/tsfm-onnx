@@ -17,10 +17,18 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div class="page">
 
-  <nav class="topbar">
-    <span class="brand">t0&nbsp;forecast</span>
+<header class="sitebar">
+  <nav class="sitebar-inner">
+    <span class="brand">
+      <svg class="logo" viewBox="0 0 28 28" width="30" height="30" aria-hidden="true">
+        <rect width="28" height="28" rx="7" fill="#14ae83"/>
+        <path d="M5 19 L11 12 L15 15.5 L22.5 7.5" fill="none" stroke="#fbfaf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="22.5" cy="7.5" r="2.3" fill="#fbfaf6"/>
+      </svg>
+      <span class="brand-name">t0-alpha</span>
+      <span class="brand-sub">forecast</span>
+    </span>
     <span class="nav-links">
       <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
       <!-- TODO: point at the real repo once pushed -->
@@ -30,7 +38,11 @@
       </a>
     </span>
   </nav>
-  <p class="lede">Zero-shot time-series forecasting in your browser. Runs entirely on your device; data you load here never leaves the page.</p>
+</header>
+
+<div class="page">
+
+  <p class="lede">Zero-shot forecasting with the t0-alpha foundation model, entirely in your browser. Your data never leaves your device.</p>
 
   <section class="panel" aria-label="Data and options">
     <div class="field">
@@ -89,7 +101,7 @@
       <span id="lg-history"><span class="key key-history"></span>history</span>
       <span id="lg-actuals" hidden><span class="key key-actuals"></span>actuals</span>
       <span id="lg-forecast"><span class="key key-forecast"></span>forecast median <span class="key-band"></span>10-90 / 25-75</span>
-      <span id="lg-library" hidden><span class="key key-library"></span>library median (PyTorch)</span>
+      <span id="lg-library" hidden><span class="key key-library"></span>library median</span>
     </div>
   </section>
 

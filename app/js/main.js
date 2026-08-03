@@ -121,8 +121,8 @@ async function run() {
       state.ms = ms;
     }
 
-    const mode = joint ? `joint x${state.source.columns.length}` : "univariate";
-    setStatus(`forecast in ${state.ms.toFixed(0)} ms - ${precision}, ${mode}, WASM`);
+    const mode = joint ? `, joint x${state.source.columns.length}` : "";
+    setStatus(`forecast in ${state.ms.toFixed(0)} ms (${precision}${mode})`);
     chart.setData(state.data, state.quantiles);
     renderLegend();
     renderMetrics();
@@ -162,25 +162,23 @@ function renderMetrics() {
   const { data, quantiles } = state;
   const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
-  tiles.push(tile("Inference time", `${state.ms.toFixed(0)} ms`, `${selectedPrecision()}, WASM, on this device`));
+  tiles.push(tile("Inference", `${state.ms.toFixed(0)} ms`, selectedPrecision()));
 
   if (data.actuals.length) {
     const median = quantiles.map((qs) => qs[MEDIAN_INDEX]);
-    tiles.push(tile("Median error (MAE) vs actuals", compact(mae(median, data.actuals)),
-      data.refNatural ? `library gets ${compact(mae(data.refNatural.map((qs) => qs[MEDIAN_INDEX]), data.actuals))}` : "lower is better"));
+    tiles.push(tile("MAE, forecast", compact(mae(median, data.actuals))));
+    if (data.refNatural) {
+      tiles.push(tile("MAE, library", compact(mae(data.refNatural.map((qs) => qs[MEDIAN_INDEX]), data.actuals))));
+    }
     const cov = bandCoverage(quantiles, data.actuals);
     if (Number.isFinite(cov)) {
-      tiles.push(tile("Actuals inside 10-90 band", pct(cov), "well-calibrated is about 80%"));
+      tiles.push(tile("Band coverage", pct(cov), "target 80%"));
     }
   }
 
   if (data.refSame) {
     const same = diffStats(quantiles, data.refSame);
-    tiles.push(tile("vs library, same input", `${pct(same.mean)} mean`,
-      `max ${pct(same.max)} of spread - export + quantization`));
-    const natural = diffStats(quantiles, data.refNatural);
-    tiles.push(tile("vs library, natural call", `${pct(natural.mean)} mean`,
-      `max ${pct(natural.max)} of spread - adds padding effect`));
+    tiles.push(tile("vs library", `${pct(same.mean)}`, `max ${pct(same.max)}`));
   }
 
   $("metrics").replaceChildren(...tiles);

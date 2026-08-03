@@ -54,27 +54,38 @@ body {
 .page {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 34px 24px 48px;
+  padding: 0 24px 48px;
 }
 
 a { color: var(--accent-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* ---------------- navbar ---------------- */
+/* ---------------- navbar: full-width band ---------------- */
 
-.topbar {
+.sitebar {
+  background: var(--panel);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sitebar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 24px;
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 2px 0 14px;
-  border-bottom: 1px solid var(--hairline);
-  margin-bottom: 14px;
 }
 
-.brand {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+.brand { display: inline-flex; align-items: center; gap: 11px; }
+.logo { display: block; }
+.brand-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.brand-sub {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+  margin-top: 3px;
 }
 
 .nav-links { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: 14px; }
@@ -95,7 +106,7 @@ a:hover { text-decoration: underline; }
 .nav-cta:hover { border-color: var(--accent); }
 .nav-cta svg { color: var(--accent-ink); }
 
-.lede { margin: 0 0 24px; color: var(--ink-muted); font-size: 13.5px; font-weight: 300; }
+.lede { margin: 22px 0 24px; color: var(--ink-muted); font-size: 13.5px; font-weight: 300; }
 
 /* ---------------- control panel ---------------- */
 
