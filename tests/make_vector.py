@@ -1,6 +1,6 @@
 """Deterministic input + native-ORT expected outputs for the WASM smoke test.
 
-Usage:  .venv-export/bin/python tests/make_vector.py [out.json]
+Usage (with .venv-export activated):  python tests/make_vector.py [out.json]
 Works from any working directory; defaults to writing tests/vector.json.
 """
 
