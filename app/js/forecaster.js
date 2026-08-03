@@ -8,13 +8,29 @@
 
 import { CONTEXT_LEN, HORIZON, LEVELS, MODEL_BASE, MODEL_FILES } from "./config.js";
 
-/** One session per (graph, precision), created on first use, then cached -
- *  a load means downloading 100-400 MB and compiling WASM kernels. */
+/** One session per (graph, precision), created on first use, then cached
+ *  in memory - a load means fetching 100-400 MB and compiling WASM kernels. */
 const sessions = {};
 
-/** Download with byte progress so the UI can show a real bar; the browser's
- *  HTTP cache still applies to the underlying fetch. */
+/** Cache Storage bucket for model bytes. The browser's plain HTTP cache is
+ *  NOT reliable here: Chromium declines to disk-cache bodies this large,
+ *  and Hugging Face resolve URLs redirect to signed CDN links whose query
+ *  strings change between sessions, so every page reload re-downloaded the
+ *  model. The Cache API stores the bytes once under the stable URL and
+ *  survives reloads. Bump the name if model files are ever republished
+ *  under the same filenames. */
+const MODEL_CACHE = "t0-models-v1";
+
 async function fetchModel(url, onProgress) {
+  let cache = null;
+  try {
+    cache = await caches.open(MODEL_CACHE);
+    const hit = await cache.match(url);
+    if (hit) return new Uint8Array(await hit.arrayBuffer());
+  } catch {
+    /* Cache API unavailable (rare); fall through to a plain download. */
+  }
+
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`model download failed (${resp.status}) for ${url}`);
   const total = Number(resp.headers.get("Content-Length")) || 0;
@@ -33,6 +49,14 @@ async function fetchModel(url, onProgress) {
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.length;
+  }
+
+  if (cache) {
+    try {
+      await cache.put(url, new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } }));
+    } catch {
+      /* Quota exceeded: the app still works, the next reload just re-downloads. */
+    }
   }
   return bytes;
 }

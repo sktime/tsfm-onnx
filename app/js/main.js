@@ -302,6 +302,11 @@ function wireDropzone(label, input, onFile) {
 }
 
 async function init() {
+  // A file dropped OUTSIDE a drop zone must not navigate the tab to the
+  // CSV (which loses the page and, with it, the loaded model).
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+
   wireDropzone($("dropzone"), $("csv"), pickUpload);
   wireDropzone($("testzone"), $("testcsv"), pickTestFile);
 
