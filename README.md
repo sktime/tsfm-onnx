@@ -76,16 +76,19 @@ uv venv --python 3.12 .venv-export
 uv pip install -p .venv-export torch --index-url https://download.pytorch.org/whl/cpu
 uv pip install -p .venv-export tfc-t0 onnx onnxscript onnxruntime
 
-# 2. Export the model and validate it against the original library
-.venv-export/bin/python scripts/export_t0_onnx.py     # writes onnx/t0-alpha-ctx512-h64.onnx
+# 2. Activate it for the rest of the session
+source .venv-export/bin/activate
 
-# 3. Quantize it for the web
-.venv-export/bin/python scripts/quantize_t0_onnx.py   # writes onnx/t0-alpha-ctx512-h64-int8.onnx
+# 3. Export the model and validate it against the original library
+python scripts/export_t0_onnx.py       # writes onnx/t0-alpha-ctx512-h64.onnx
 
-# 4. Prepare the demo datasets and the PyTorch reference forecasts
-.venv-export/bin/python scripts/make_demo_data.py     # writes webdemo/data/
+# 4. Quantize it for the web
+python scripts/quantize_t0_onnx.py     # writes onnx/t0-alpha-ctx512-h64-int8.onnx
 
-# 5. Serve the repo root and open the demo
+# 5. Prepare the demo datasets and the PyTorch reference forecasts
+python scripts/make_demo_data.py       # writes webdemo/data/
+
+# 6. Serve the repo root and open the demo
 python -m http.server 8000
 # then open http://localhost:8000/webdemo/
 ```
@@ -117,6 +120,26 @@ python -m http.server 8000
 
 The last two rows measure properties of the fixed-shape deployment rather
 than export error, which is why the demo reports them separately.
+
+### Quantization drift by dataset
+
+Because dynamic int8 quantization interacts with the data, the drift varies
+by series. The table below compares each ONNX model against the library's
+forecast on the identical padded input, and reports the mean and maximum
+absolute difference as a percentage of that forecast's spread.
+
+| Dataset | fp32 mean / max | int8 mean / max |
+|---|---|---|
+| Airline passengers (144 points, padded) | 0.00% / 0.00% | 3.07% / 16.79% |
+| Melbourne daily min temperatures | 0.00% / 0.00% | 0.94% / 7.35% |
+| Monthly sunspots | 0.00% / 0.00% | 0.96% / 7.31% |
+
+The fp32 export is numerically exact for practical purposes on every
+dataset. The int8 model stays around 1% mean drift on long, well-behaved
+series, but it degrades noticeably on the short, strongly trending airline
+series, whose padded context gives the quantized MatMuls less signal to
+work with. If your series are short or the tails of the quantile fan
+matter, prefer the fp32 model.
 
 ## Limitations
 

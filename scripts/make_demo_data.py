@@ -29,7 +29,7 @@ history matters.
 
 Everything lands in webdemo/data/ as JSON + an index the page discovers.
 
-Usage:  .venv-export/bin/python scripts/make_demo_data.py
+Usage (with .venv-export activated):  python scripts/make_demo_data.py
 """
 
 import json

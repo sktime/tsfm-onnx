@@ -5,7 +5,7 @@ Run inside a supported environment (Python 3.11-3.13, torch >= 2.4):
     uv venv --python 3.12 .venv-export
     uv pip install -p .venv-export torch --index-url https://download.pytorch.org/whl/cpu
     uv pip install -p .venv-export tfc-t0 onnx onnxscript onnxruntime
-    .venv-export/bin/python scripts/export_t0_onnx.py
+    python scripts/export_t0_onnx.py  (with .venv-export activated)
 
 The exported graph:
 

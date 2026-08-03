@@ -9,7 +9,7 @@ disappoints, the next rung is static quantization with calibration data.
 Only MatMul/Gemm weights are quantized; everything else (attention masks,
 scaler math, softmax) stays float, which is why the accuracy cost is small.
 
-Usage:  .venv-export/bin/python scripts/quantize_t0_onnx.py \
+Usage (with .venv-export activated):  python scripts/quantize_t0_onnx.py \
             [--model onnx/t0-alpha-ctx512-h64.onnx]
 
 Validates the quantized model against BOTH the fp32 ONNX model and the
