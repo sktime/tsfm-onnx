@@ -1,19 +1,19 @@
 <!doctype html>
 <!--
-  t0 forecast - zero-shot time-series forecasting, entirely in the browser.
+  tsfm forecast - zero-shot time-series forecasting, entirely in the browser.
   Markup only; behavior in js/ (entry: js/main.js), styles in css/style.css.
   See README.md in this folder for the architecture.
 
   Local run: serve the REPO ROOT (models live in ../onnx/):
-      python -m http.server 8000   ->   http://localhost:8000/app/
+      uv run python -m http.server 8080   ->   http://localhost:8080/app/
   Public hosting: see the "Hosting" section of the repo README.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Zero-shot probabilistic time-series forecasting with The Forecasting Company's t0-alpha model, running locally in your browser via ONNX Runtime. Upload a CSV, get quantile forecasts. No server, no upload.">
-  <title>t0 forecast - time-series forecasting in your browser</title>
+  <meta name="description" content="Zero-shot time-series forecasting with open foundation models (Chronos-2, TinyCast, TinyTimeMixer), running locally in your browser via ONNX Runtime. Upload a CSV, get forecasts. No server, no upload.">
+  <title>tsfm forecast - time-series forecasting in your browser</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -26,11 +26,10 @@
         <path d="M5 19 L11 12 L15 15.5 L22.5 7.5" fill="none" stroke="#fbfaf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
         <circle cx="22.5" cy="7.5" r="2.3" fill="#fbfaf6"/>
       </svg>
-      <span class="brand-name">t0-alpha</span>
+      <span class="brand-name">tsfm</span>
       <span class="brand-sub">forecast</span>
     </span>
     <span class="nav-links">
-      <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
       <a class="nav-cta" href="https://github.com/siddharth7113/tsfm-onnx" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 .3l2.1 4.8 5.2.5-3.9 3.4 1.1 5.1L8 11.4l-4.5 2.7 1.1-5.1L.7 5.6l5.2-.5z"/></svg>
         Star on GitHub
@@ -41,7 +40,7 @@
 
 <div class="page">
 
-  <p class="lede">Zero-shot forecasting with the t0-alpha foundation model, entirely in your browser. Your data never leaves your device.</p>
+  <p class="lede">Zero-shot forecasting with open time-series foundation models, entirely in your browser. Your data never leaves your device.</p>
 
   <section class="panel" aria-label="Data and options">
     <div class="field">
@@ -59,14 +58,14 @@
       <select id="column" aria-label="CSV column to forecast"></select>
       <label class="check" id="joint-wrap" hidden>
         <input type="checkbox" id="joint">
-        forecast all columns jointly <span class="dim">(multivariate)</span>
+        forecast all columns jointly <span class="dim">(multivariate, Chronos-2)</span>
       </label>
     </div>
 
     <div class="field" id="compare-field" hidden>
       <span class="field-label">Check against</span>
       <label class="check"><input type="radio" name="compare" value="none" checked> nothing</label>
-      <label class="check"><input type="radio" name="compare" value="holdout"> backtest: hold out last 64</label>
+      <label class="check"><input type="radio" name="compare" value="holdout"> backtest: hold out the forecast horizon</label>
       <label class="check"><input type="radio" name="compare" value="testfile"> test CSV</label>
       <label id="testzone" for="testcsv" hidden>
         <input type="file" id="testcsv" accept=".csv,text/csv">
@@ -77,8 +76,9 @@
 
     <div class="field">
       <span class="field-label">Model</span>
-      <label class="check"><input type="radio" name="model" value="int8" checked> int8 <span class="dim">108 MB, fastest to load</span></label>
-      <label class="check"><input type="radio" name="model" value="fp32"> fp32 <span class="dim">411 MB, exact</span></label>
+      <select id="model" aria-label="Forecasting model"></select>
+      <label class="check"><input type="radio" name="precision" value="int8" checked> int8 <span class="dim">smaller, fastest to load</span></label>
+      <label class="check"><input type="radio" name="precision" value="fp32"> fp32 <span class="dim">exact</span></label>
     </div>
   </section>
 
@@ -99,7 +99,7 @@
     <div class="legend" aria-hidden="false">
       <span id="lg-history"><span class="key key-history"></span>history</span>
       <span id="lg-actuals" hidden><span class="key key-actuals"></span>actuals</span>
-      <span id="lg-forecast"><span class="key key-forecast"></span>forecast median <span class="key-band"></span>10-90 / 25-75</span>
+      <span id="lg-forecast"><span class="key key-forecast"></span>forecast</span>
       <span id="lg-library" hidden><span class="key key-library"></span>library median</span>
     </div>
   </section>
@@ -117,24 +117,24 @@
   <footer>
     <div class="foot-grid">
       <div class="foot-credit">
-        <span class="foot-title">Built on t0-alpha</span>
-        <span>a time-series foundation model by
-          <a href="https://theforecastingcompany.com" target="_blank" rel="noopener">The Forecasting Company</a>,
+        <span class="foot-title">Models</span>
+        <span>
+          <a href="https://huggingface.co/amazon/chronos-2" target="_blank" rel="noopener">Chronos-2</a> (Amazon),
+          <a href="https://huggingface.co/raws-labs/tinycast" target="_blank" rel="noopener">TinyCast</a> (RAWS Labs) and
+          <a href="https://huggingface.co/ibm-granite/granite-timeseries-ttm-r2" target="_blank" rel="noopener">TinyTimeMixer r2</a> (IBM),
           running here through
           <a href="https://onnxruntime.ai" target="_blank" rel="noopener">ONNX Runtime Web</a>.
         </span>
       </div>
       <div class="foot-links">
-        <a href="https://huggingface.co/theforecastingcompany/t0-alpha" target="_blank" rel="noopener">model card</a>
-        <a href="https://github.com/theforecastingcompany/tfc-t0" target="_blank" rel="noopener">tfc-t0 library</a>
         <a href="https://github.com/siddharth7113/tsfm-onnx" target="_blank" rel="noopener" id="source-link">source code</a>
       </div>
     </div>
     <p class="dim">
-      Unofficial project, not affiliated with or endorsed by The Forecasting Company.
-      Model weights are Apache-2.0 with gated access. Forecasts are statistical
-      estimates, not guarantees; context is capped at the most recent 512 points
-      and the horizon is 64 steps.
+      Unofficial project, not affiliated with or endorsed by the model authors.
+      All model weights are Apache-2.0. Forecasts are statistical estimates,
+      not guarantees; context and horizon limits depend on the selected model
+      (up to 2048 history points, 64-96 forecast steps).
     </p>
   </footer>
 

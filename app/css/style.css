@@ -242,15 +242,6 @@ progress::-moz-progress-bar { background: var(--accent); }
 .key-library {
   background: repeating-linear-gradient(90deg, var(--series-reference) 0 5px, transparent 5px 9px);
 }
-.key-band {
-  display: inline-block;
-  width: 14px;
-  height: 10px;
-  background: var(--band-inner);
-  vertical-align: middle;
-  margin: 0 4px 0 8px;
-}
-
 /* ---------------- metrics: captions, not cards ---------------- */
 
 .tiles {

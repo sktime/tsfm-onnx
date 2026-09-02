@@ -1,19 +1,17 @@
 /**
- * Canvas time-series chart: history, actuals, the forecast quantile fan,
- * and the library reference median. Plain 2D canvas, no charting library.
+ * Canvas time-series chart: history, actuals, the point forecast, and the
+ * library reference median. Plain 2D canvas, no charting library.
  *
- * Follows the dataviz house rules: 2px lines, ~10% opacity band washes,
- * hairline solid gridlines, recessive axes, a crosshair + one tooltip that
- * lists EVERY series at the hovered x (values lead, series names follow,
- * line keys in the series color), 8px hover markers with a 2px surface
- * ring, and keyboard navigation (arrow keys) with the same readout.
+ * Follows the dataviz house rules: 2px lines, hairline solid gridlines,
+ * recessive axes, a crosshair + one tooltip that lists EVERY series at the
+ * hovered x (values lead, series names follow, line keys in the series
+ * color), 8px hover markers with a 2px surface ring, and keyboard
+ * navigation (arrow keys) with the same readout.
  *
  * All colors come from CSS custom properties on the chart root, so light
  * and dark themes are handled by the stylesheet and the chart just re-reads
  * them on redraw().
  */
-
-import { HORIZON, MEDIAN_INDEX } from "./config.js";
 
 const WINDOW = 256; // history points shown; older context still feeds the model
 
@@ -23,17 +21,17 @@ export function createChart(root) {
   const g = canvas.getContext("2d");
 
   const state = {
-    data: null,       // normalized dataset (see data.js)
-    quantiles: null,  // ONNX forecast [step][level] or null
-    hover: null,      // window index under the crosshair, or null
-    layout: null,     // computed per draw: scales + geometry
+    data: null,    // normalized dataset (see data.js)
+    points: null,  // ONNX point forecast [step] or null
+    hover: null,   // window index under the crosshair, or null
+    layout: null,  // computed per draw: scales + geometry
   };
 
   /* ---------- public API ---------- */
 
-  function setData(data, quantiles) {
+  function setData(data, points) {
     state.data = data;
-    state.quantiles = quantiles;
+    state.points = points;
     state.hover = null;
     hideTooltip();
     draw();
@@ -57,8 +55,6 @@ export function createChart(root) {
       forecast: v("--series-forecast"),
       reference: v("--series-reference"),
       actuals: v("--series-actuals"),
-      bandOuter: v("--band-outer"),
-      bandInner: v("--band-inner"),
     };
   }
 
@@ -76,14 +72,14 @@ export function createChart(root) {
     const data = state.data;
     const tail = Math.min(data.context.length, WINDOW);
     const shown = data.context.slice(-tail);
-    const future = Math.max(HORIZON, data.actuals.length);
+    const future = Math.max(state.points?.length ?? 0, data.actuals.length, 1);
     const total = tail + future;
 
     const everything = [
       ...shown,
       ...data.actuals,
-      ...(state.quantiles ? state.quantiles.flat() : []),
-      ...(data.refNatural ? data.refNatural.map((q) => q[MEDIAN_INDEX]) : []),
+      ...(state.points ?? []),
+      ...(data.refNatural ?? []),
     ].filter(Number.isFinite);
     let lo = Math.min(...everything);
     let hi = Math.max(...everything);
@@ -148,7 +144,6 @@ export function createChart(root) {
     const L = (state.layout = layout());
     const C = colors();
     const { w, h, m, tail, shown, total, X, Y } = L;
-    const q = state.quantiles;
     const data = state.data;
 
     g.clearRect(0, 0, w, h);
@@ -192,20 +187,6 @@ export function createChart(root) {
     g.lineTo(w - m.right, Math.round(h - m.bottom) + 0.5);
     g.stroke();
 
-    // Quantile bands: series-hue washes (outer 10-90, inner 25-75).
-    if (q) {
-      const band = (loI, hiI, color) => {
-        g.beginPath();
-        q.forEach((qs, i) => g.lineTo(X(tail + i), Y(qs[hiI])));
-        [...q].reverse().forEach((qs, i) => g.lineTo(X(tail + HORIZON - 1 - i), Y(qs[loI])));
-        g.closePath();
-        g.fillStyle = color;
-        g.fill();
-      };
-      band(0, 4, C.bandOuter);
-      band(1, 3, C.bandInner);
-    }
-
     // Lines: history joins the forecast start; actuals continue history.
     line(shown.map((v, i) => [X(i), Y(v)]), C.history, 2);
     if (data.actuals.length) {
@@ -213,10 +194,10 @@ export function createChart(root) {
       line(joined, C.actuals, 2);
     }
     if (data.refNatural) {
-      line(data.refNatural.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]), C.reference, 2, [7, 5]);
+      line(data.refNatural.map((v, i) => [X(tail + i), Y(v)]), C.reference, 2, [7, 5]);
     }
-    if (q) {
-      line(q.map((qs, i) => [X(tail + i), Y(qs[MEDIAN_INDEX])]), C.forecast, 2);
+    if (state.points) {
+      line(state.points.map((v, i) => [X(tail + i), Y(v)]), C.forecast, 2);
     }
 
     if (state.hover !== null) drawHover(L, C);
@@ -235,14 +216,11 @@ export function createChart(root) {
       if (Number.isFinite(data.actuals[k])) {
         rows.push({ name: "actual", color: colors().actuals, value: data.actuals[k] });
       }
-      if (state.quantiles && k < HORIZON) {
-        const qs = state.quantiles[k];
-        rows.push({ name: "forecast median", color: colors().forecast, value: qs[MEDIAN_INDEX] });
-        // The band is an ink wash in this theme, so its key is ink too.
-        rows.push({ name: "10-90 band", color: colors().history, value: qs[0], value2: qs[4] });
+      if (state.points && k < state.points.length) {
+        rows.push({ name: "forecast", color: colors().forecast, value: state.points[k] });
       }
-      if (data.refNatural && k < HORIZON) {
-        rows.push({ name: "library median", color: colors().reference, value: data.refNatural[k][MEDIAN_INDEX] });
+      if (data.refNatural && k < data.refNatural.length) {
+        rows.push({ name: "library median", color: colors().reference, value: data.refNatural[k] });
       }
     }
     return rows.filter((r) => Number.isFinite(r.value));
@@ -259,17 +237,14 @@ export function createChart(root) {
     g.stroke();
     // 8px markers with a 2px surface ring so they read over the lines.
     for (const row of seriesAt(i)) {
-      for (const v of [row.value, row.value2]) {
-        if (!Number.isFinite(v)) continue;
-        g.beginPath();
-        g.arc(L.X(i), L.Y(v), 6, 0, Math.PI * 2);
-        g.fillStyle = C.surface;
-        g.fill();
-        g.beginPath();
-        g.arc(L.X(i), L.Y(v), 4, 0, Math.PI * 2);
-        g.fillStyle = row.color;
-        g.fill();
-      }
+      g.beginPath();
+      g.arc(L.X(i), L.Y(row.value), 6, 0, Math.PI * 2);
+      g.fillStyle = C.surface;
+      g.fill();
+      g.beginPath();
+      g.arc(L.X(i), L.Y(row.value), 4, 0, Math.PI * 2);
+      g.fillStyle = row.color;
+      g.fill();
     }
   }
 
@@ -293,7 +268,7 @@ export function createChart(root) {
       key.style.background = row.color;
       const value = document.createElement("span");
       value.className = "tt-value";
-      value.textContent = Number.isFinite(row.value2) ? `${fmt(row.value)} - ${fmt(row.value2)}` : fmt(row.value);
+      value.textContent = fmt(row.value);
       const name = document.createElement("span");
       name.className = "tt-name";
       name.textContent = row.name;

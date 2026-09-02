@@ -2,6 +2,7 @@
 # big/generated things out of version control if this becomes a git repo).
 .venv/
 .venv-export/
+.venv-toto/
 __pycache__/
 onnx/*.onnx
 tests/node_modules/

@@ -261,6 +261,157 @@ invariant and coupling checks for the int8 build on real climate data.
 check whether the graph already computes X behind a constant. Promoting a
 constant to an input is the cheapest feature in the ONNX toolbox.
 
+## 13. The TinyTimeMixer export (2026-09-01)
+
+Third model: IBM's `ibm-granite/granite-timeseries-ttm-r2` (512 context /
+96 horizon), exported by `scripts/export_ttm_onnx.py` into its own venv
+(`.venv-ttm`, see requirements-ttm.txt - granite-tsfm's transformers pin
+conflicts with the chronos/t0 stack; also note the PyPI `granite-tsfm`
+name is a 0.0.0 placeholder, install from the IBM GitHub repo).
+
+**The easy one.** Zero monkeypatches: the whole inference path -
+RevIN-style StdScaler, `unfold` patchify, MLP-mixer blocks, linear
+forecast head, inverse rescale - is pure tensor math, and every Python
+`if` selects structure from the config. `torch.onnx.export(dynamo=True)`
+succeeded on the first attempt, the payoff of reading the model source
+before writing code. Scaling lives INSIDE `TinyTimeMixerForPrediction`
+(scaler in the backbone, `scaler.inverse` on the head output), so the
+graph is raw-in/raw-out with no external preprocessor to replicate.
+
+**Differences from the other two exports, all architectural:**
+- Point forecaster (MSE loss, no quantile head): output is `forecast`
+  `[batch, 96]`, not a quantile tensor.
+- Short series are LEFT-padded with ZEROS, not NaN. That is exactly what
+  the official `forward` does internally (it pads zeros and leaves
+  `past_observed_mask=None`, so the scaler counts the padding as observed)
+  - verified byte-for-byte identical, 0.0 diff. NaN is NOT supported: no
+  NaN-aware path exists and it would poison the scaler.
+
+**Parity** (`tests/parity_ttm_onnx_vs_official.py`, vs the official
+`forward()`): fp32 worst **0.0006%** of forecast spread (airline 0.0002%,
+sine 0.0006%, trend 0.0005%, 3-row batch 0.0000%); int8 worst **6.8%**
+(airline 5.3%, sine 1.3%, trend 6.8%, batch 0.04%). Sizes: 4.3 MB fp32 ->
+2.0 MB int8.
+
+**One quantization tweak.** Plain `quantize_dynamic` left the trend case
+at 9.1% of spread; excluding the single forecast-head MatMul (its error
+lands directly on the output) bought the margin back to 6.8% for 0.3 MB.
+The head is found structurally - walk producers back from the graph
+output to the first MatMul - so re-exports with different node numbering
+keep working (the finder already survived one renumbering, 179 -> 178).
+
+---
+
+## 14. The tinycast export (2026-09-01, same day)
+
+Fourth model: `raws-labs/tinycast`, a 146K-parameter attention-free
+dilated-conv forecaster (9 deciles, ctx 2048). The official implementation
+is vendored at ./tinycast (github.com/raws-labs/tinycast @ e2c1e2e) and
+installed editable into `.venv-export` - its deps coexist with the
+chronos/t0 stack, no separate venv needed.
+
+**The graph is one AR block, not a horizon.** The deployed GIFT-Eval
+predictor is an autoregressive rollout: 48-step blocks, the MEDIAN fed back
+into the context each step, a final ascending sort across the quantile axis.
+`scripts/export_tinycast_onnx.py` therefore exports exactly the function the
+rollout calls (`context [B,2048] -> quantiles [B,48,9]`), and the driver
+recipe (pad-with-FIRST-value, np.interp NaN imputation, rollout, sort) is
+reimplemented independently in `tests/parity_tinycast_onnx_vs_official.py`
+so the parity claim covers the recipe a browser client must replicate, not
+just the graph. fp32 parity vs `TinyCastPredictor.predict()`: worst 0.0003%
+of forecast spread across horizons 48-720 (15 chained blocks).
+
+**The periodogram exports.** The feared blocker - `torch.fft.rfft` inside
+the Fisher-significance period detector - lowered natively to the ONNX DFT
+op (probe matched torch to 5.6e-9), and onnxruntime-web 1.22's WASM kernels
+run it. Zero monkeypatches, like TTM. One structural caveat stands: period
+detection is DISCRETE (topk over a thresholded periodogram), so a peak
+sitting exactly on the significance threshold could flip a period and change
+the forecast discontinuously; none of the parity cases hit this.
+
+**Quantization was the real work.** Naive `quantize_dynamic` failed parity
+at 12% of spread. Measured, not guessed: onnxruntime also dynamically
+quantizes Conv (ConvInteger), and the depthwise dilated convs ARE the
+receptive field - with every MatMul kept float, Conv quantization alone
+still cost ~10%. The shipped recipe (`scripts/quantize_tinycast_onnx.py`)
+quantizes MatMul only and keeps the five interface projections (in_proj,
+fc_in_proj, query_proj, phase_mix, out_proj - selected by weight SHAPE, so
+re-exports keep working) in float: worst 4.1% of spread, rollout compounding
+included. Int8 error grows non-monotonically with the exclusion set here
+(the int8 median feeds back into a discrete period detector), so tune by
+measurement only.
+
+---
+
+## 15. The Toto 2 export (2026-09-01, same day)
+
+Fifth model: `Datadog/Toto-2.0-22m` (22M params, Apache-2.0), a
+decoder-only patched transformer with alternating time-causal and
+variate-axis attention and a deterministic 9-decile quantile head.
+Exported by `scripts/export_toto2_onnx.py` into its own venv (`.venv-toto`,
+see requirements-toto.txt - the `toto-models` PyPI package is real, unlike
+granite-tsfm's, but its gluonts/lightning/unit-scaling stack gets a
+dedicated environment; toto-models 1.0.0, torch 2.13 cpu, ORT 1.29).
+
+**The graph is one parallel pass, not a rollout.** Toto 2 trains with
+contiguous patch masking, so `Toto2Model.forecast()` with horizon <=
+decode_block_size runs its decode loop exactly once, KV-cache-free: for
+horizon 96 = 3 patches of 32 that path is pure tensor math. The graph is
+`context [variates, 2048] + series_ids [variates] -> quantiles
+[variates, 96, 9]` - `series_ids` is a runtime input exactly like
+chronos-2's `group_ids` (shared id = joint multivariate via the variate
+attention mask, distinct = independent). NaN marks missing: the model is
+genuinely missing-aware (mask-driven scaler, missingness channel in the
+patch embedding, `has_missing_values=True` attention masks - the latter
+baked in; verified bit-identical to the model card's `False` on fully
+observed input, and it is what makes NaN-left-padding sound). One
+non-obvious semantic, documented in the export: `forecast()` force-observes
+the LAST context patch, so NaN in the final 32 steps means literal 0.0.
+
+**One export blocker, one dtype fix.** The in-place boolean-mask
+assignment marking all-NaN patches (`base_gids[...][obs == 0] = -1`)
+traces to index_put with a runtime-bool index; being mid-method it cannot
+be monkeypatched, so the export wrapper restates the single-pass body
+(submodules called, not copied) with a `torch.where` in that one spot -
+eager restatement vs official: 0.0. And the transformer's int32 arange
+`time_ids` index RoPE tables, which ONNX Gather rejects (INVALID_GRAPH);
+passing the same arange as int64 fixed it. fp32 parity: worst **0.0003%**
+of forecast spread over seven cases including NaN gaps, 4096-truncation
+and a 4-variate joint task. The float64 causal scaler exports and runs
+as-is in ORT.
+
+**Quantization was a different failure mode than tinycast's.** Naive
+`quantize_dynamic`: 18.6% of spread. MatMul-only: identical (there IS
+nothing else). Tinycast-style interface exclusions: 11.9%; excluding the
+8 most sensitive classes: 14.7% (non-monotonic again). The decisive
+measurement: pure WEIGHT-ONLY rounding (fp32 activations everywhere)
+still scores 15.3% - so unlike every prior model the error is weight
+rounding itself, not activation quantization. Toto 2 predicts in
+asinh-space and unsquashes with `sinh`, so on trending series small logit
+errors are amplified exponentially; a sensitivity sweep found ~1-4% from
+almost every matrix (17% from the head output projection alone). The fix
+is granularity, not exclusions: `scripts/quantize_toto2_onnx.py` ships
+blocked int8 weight-only quantization (opset-21 blocked DequantizeLinear,
+one scale per 16-input-row x output-channel block) with the head's two
+output MatMuls kept fp32, found TTM-style by walking back from the graph
+output. Ladder: per-channel 15.3% -> block-32 7.6% -> block-16 7.5% ->
+block-16 + head fp32 **2.7%**. Two structural pre-steps matter: the u-uP
+`F.linear` exports as `MatMul(x, Transpose(W))` and the exporter never
+folds the big transposes, hiding every weight from every quantizer (fold
+them first, by pattern not name), and the dead fp32 originals must be
+pruned or the "quantized" file GROWS.
+
+**Parity** (`tests/parity_toto2_onnx_vs_official.py`, official `forecast()`
+fed the identical NaN-padded arrays - xPos centers on the sequence
+midpoint, which cancels mathematically but not bit-wise, so natural-length
+vs padded differs by ~2e-5 of spread, above the fp32 bar): fp32 worst
+**0.0003%**, int8 worst **2.2%** (airline 2.1%, sine 2.2%, trend 1.8%,
+NaN-gaps 1.6%, long-4096 1.6%, multivariate 0.9%). Sizes: 110.7 MB fp32
+-> 52.5 MB int8 (the remaining fp32 bulk is 20 MB of baked 8192-patch
+RoPE tables of which 67 rows are ever read). One honest caveat: blocked
+DequantizeLinear needs opset-21 kernels - fine in native ORT >= 1.20,
+untested here in onnxruntime-web.
+
 ---
 
 ## The condensed lessons

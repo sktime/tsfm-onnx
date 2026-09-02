@@ -28,18 +28,24 @@ app/
 
 ## Features
 
-- Sample datasets with **library reference forecasts** overlaid, so the
-  browser-vs-PyTorch difference is measured on screen.
+- **Three models** behind one picker (config.js registry): Chronos-2,
+  TinyCast and TinyTimeMixer r2, each with its own context length, horizon
+  and inference driver. The app displays POINT forecasts only (the median
+  where a model emits quantiles).
+- Sample datasets with **library reference forecasts** overlaid (computed
+  with the chronos-2 PyTorch pipeline, so shown only for that model), so
+  the browser-vs-PyTorch difference is measured on screen.
 - **CSV upload** (click or drag): multi-column files get a series picker;
   the first non-numeric column becomes x-axis labels; empty/NA cells are
-  treated as missing (the model handles NaN natively).
-- **Joint multivariate mode**: forecast all columns of an upload together
-  through the grouped graph (`group_ids` input; columns share one id).
-- **Check against**: backtest (hold out the last 64 points) or upload a
-  separate test CSV with the actual future; metric tiles report MAE and
-  10-90 band coverage.
-- **Table view + CSV download** of the full quantile forecast.
-- int8 / fp32 model switch and a real download progress bar.
+  treated as missing (chronos-2 handles NaN natively; for tinycast/TTM the
+  forecaster imputes by linear interpolation, matching the official
+  tinycast predictor).
+- **Joint multivariate mode** (chronos-2 only): forecast all columns of an
+  upload together through the grouped graph (`group_ids` input).
+- **Check against**: backtest (hold out the model's horizon) or upload a
+  separate test CSV with the actual future; metric tiles report MAE.
+- **Table view + CSV download** of the forecast.
+- int8 / fp32 precision switch and a real download progress bar.
 
 ## Data flow
 
@@ -47,10 +53,10 @@ app/
 dataset pick / CSV upload --> data.js --> {context, actuals, refs, labels}
                                               │
                                               ▼
-                     forecaster.js: NaN-pad -> [rows, 512] (+ group_ids) -> session.run
+      forecaster.js: per-model packing -> session.run [-> AR rollout (tinycast)]
                                               │
                                               ▼
-                               quantiles [64 steps][5 levels]
+                             point forecast [horizon steps]
                             │              │               │
                             ▼              ▼               ▼
                      plot.js (chart)  metric tiles   table + CSV export

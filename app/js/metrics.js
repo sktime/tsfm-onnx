@@ -1,30 +1,28 @@
 /**
  * Numeric comparisons: browser forecast vs the PyTorch library's reference
- * forecasts, and point forecasts vs known actuals.
+ * forecast, and point forecasts vs known actuals. Everything is a point
+ * (per-step) series - the app does not display quantiles.
  */
 
-/** Range of a [step][level] forecast - the scale errors are reported
- *  against. Raw absolute diffs are meaningless across datasets (passengers
- *  in hundreds, temperatures around 10), so errors are % of this spread. */
-export function spreadOf(quantiles) {
-  const flat = quantiles.flat();
-  return Math.max(...flat) - Math.min(...flat) || 1;
+/** Range of a point forecast - the scale errors are reported against. Raw
+ *  absolute diffs are meaningless across datasets (passengers in hundreds,
+ *  temperatures around 10), so errors are % of this spread. */
+export function spreadOf(points) {
+  return Math.max(...points) - Math.min(...points) || 1;
 }
 
-/** Mean/max absolute difference between two [step][level] forecasts, as a
+/** Mean/max absolute difference between two point forecasts, as a
  *  fraction of the reference's spread. */
 export function diffStats(a, ref) {
   const s = spreadOf(ref);
   let sum = 0;
   let max = 0;
   let n = 0;
-  for (let i = 0; i < a.length; i++) {
-    for (let j = 0; j < a[i].length; j++) {
-      const d = Math.abs(a[i][j] - ref[i][j]);
-      sum += d;
-      n++;
-      if (d > max) max = d;
-    }
+  for (let i = 0; i < Math.min(a.length, ref.length); i++) {
+    const d = Math.abs(a[i] - ref[i]);
+    sum += d;
+    n++;
+    if (d > max) max = d;
   }
   return { mean: sum / n / s, max: max / s };
 }
@@ -38,20 +36,6 @@ export function mae(pointForecast, actuals) {
   }
   if (!diffs.length) return NaN;
   return diffs.reduce((a, b) => a + b, 0) / diffs.length;
-}
-
-/** Share of actuals inside the outer (10-90) band - a calibration hint:
- *  a well-calibrated 80% interval should contain roughly 80% of actuals. */
-export function bandCoverage(quantiles, actuals) {
-  let inside = 0;
-  let n = 0;
-  for (let i = 0; i < Math.min(quantiles.length, actuals.length); i++) {
-    if (!Number.isFinite(actuals[i])) continue;
-    n++;
-    const qs = quantiles[i];
-    if (actuals[i] >= qs[0] && actuals[i] <= qs[qs.length - 1]) inside++;
-  }
-  return n ? inside / n : NaN;
 }
 
 /** Compact display number: 1284.3 -> "1,284", 129000 -> "129K". */

@@ -5,13 +5,20 @@
  * Everything is normalized to one display shape:
  *   {
  *     title, note,
- *     context:    number[]        // model input (NaN = missing)
- *     actuals:    number[]        // known future to compare against, [] if none
- *     refSame:    number[][]|null // library forecast, identical padded input
- *     refNatural: number[][]|null // library forecast, natural predict() call
- *     labels:     string[]|null   // per-point x labels (dates), if the CSV had them
+ *     context:    number[]      // model input (NaN = missing)
+ *     actuals:    number[]      // known future to compare against, [] if none
+ *     refSame:    number[]|null // chronos-2 library MEDIAN, identical padded input
+ *     refNatural: number[]|null // chronos-2 library MEDIAN, natural predict() call
+ *     labels:     string[]|null // per-point x labels (dates), if the CSV had them
  *   }
+ *
+ * The bundled reference forecasts were computed with the chronos-2 PyTorch
+ * pipeline (make_demo_data.py stores 5 quantile levels; the median, index 2,
+ * is all the point-forecast app uses). main.js only shows them when the
+ * chronos-2 model is selected.
  */
+
+const REF_MEDIAN = 2; // of the 5 stored levels [0.1, 0.25, 0.5, 0.75, 0.9]
 
 export async function loadIndex() {
   return (await fetch("data/index.json")).json();
@@ -24,8 +31,8 @@ export async function loadDataset(file) {
     note: d.note,
     context: d.values.slice(0, d.values.length - d.holdout),
     actuals: d.values.slice(d.values.length - d.holdout),
-    refSame: d.ref_same_input,
-    refNatural: d.ref_natural,
+    refSame: d.ref_same_input?.map((qs) => qs[REF_MEDIAN]) ?? null,
+    refNatural: d.ref_natural?.map((qs) => qs[REF_MEDIAN]) ?? null,
     labels: null,
   };
 }
