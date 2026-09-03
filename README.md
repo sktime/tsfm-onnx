@@ -1,18 +1,18 @@
-# Time-series foundation models in the browser
+# Forecasting foundation models in the browser - do-it-yourself
 
-###  Used Claude Fable 5 in different parts of the project.
+#### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) (`sktime`)
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 [![Models on Hugging Face](https://img.shields.io/badge/models-Hugging%20Face-yellow)](https://huggingface.co/sktime)
-[![Live demo](https://img.shields.io/badge/demo-GitHub%20Pages-14ae83)](https://siddharth7113.github.io/tsfm-onnx/)
 
 This project takes five zero-shot time-series foundation models, exports each
 one from PyTorch to ONNX with numeric validation against its official
 library, quantizes it to int8, and runs it entirely in the browser with
-[onnxruntime-web](https://onnxruntime.ai/docs/tutorials/web/). There is no
-server and no Python at inference time.
+[onnxruntime-web](https://onnxruntime.ai/docs/tutorials/web/).
 
-The repository is also a worked case study of exporting custom PyTorch models
+After an initial model download, **the models run entirely on your computer - no cloud or subscription required!**
+
+This repository also contains a worked case study of exporting custom PyTorch models
 to ONNX. Every design decision, failure, and fix is documented, so the same
 process can be repeated on other models.
 
@@ -34,8 +34,8 @@ process can be repeated on other models.
 
 | Model | Author | Graph contract | fp32 / int8 size | fp32 parity | int8 parity | ONNX on Hugging Face |
 |---|---|---|---|---|---|---|
-| [t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha) | The Forecasting Company | `context [B, 512]` (NaN = missing) → `quantiles [B, 64, 5]` | 412 MB / 108 MB | 0.0001% | mean 3%, max 12 to 18% | [fp32](https://huggingface.co/sktime/t0-alpha-onnx), [int8](https://huggingface.co/sktime/t0-alpha-onnx-int8) |
 | [Chronos-2](https://huggingface.co/amazon/chronos-2) | Amazon | `context [B, 2048]` (NaN = missing) + `group_ids [B]` → `quantiles [B, 64, 21]` | 482 MB / 131 MB | 0.0001% | 4.7% | [fp32](https://huggingface.co/sktime/chronos2-onnx), [int8](https://huggingface.co/sktime/chronos2-onnx-int8) |
+| [t0-alpha](https://huggingface.co/theforecastingcompany/t0-alpha) | The Forecasting Company | `context [B, 512]` (NaN = missing) → `quantiles [B, 64, 5]` | 412 MB / 108 MB | 0.0001% | mean 3%, max 12 to 18% | [fp32](https://huggingface.co/sktime/t0-alpha-onnx), [int8](https://huggingface.co/sktime/t0-alpha-onnx-int8) |
 | [Toto-2.0-22m](https://huggingface.co/Datadog/Toto-2.0-22m) | Datadog | `context [V, 2048]` (NaN = missing) + `series_ids [V]` → `quantiles [V, 96, 9]` | 111 MB / 52 MB | 0.0003% | 2.2% | [fp32](https://huggingface.co/sktime/toto2-22m-onnx), [int8](https://huggingface.co/sktime/toto2-22m-onnx-int8) |
 | [TinyCast](https://huggingface.co/raws-labs/tinycast) | RAWS Labs | `context [B, 2048]` (finite) → `quantiles [B, 48, 9]`, one AR block | 2 MB / 2 MB | 0.0003% | 4.1% | [fp32](https://huggingface.co/sktime/tinycast-onnx), [int8](https://huggingface.co/sktime/tinycast-onnx-int8) |
 | [TinyTimeMixer r2](https://huggingface.co/ibm-granite/granite-timeseries-ttm-r2) | IBM | `context [B, 512]` (finite) → `forecast [B, 96]`, point forecast | 4 MB / 2 MB | 0.0006% | 6.9% | |
@@ -125,11 +125,11 @@ inference path in a fixed-shape module and exports it with the dynamo
 exporter. What that region is differs per model, and each script's header
 explains the choice:
 
+- **Chronos-2**: `Chronos2Model.forward` is already pure tensor math, so the
+  export is nearly direct.
 - **t0-alpha**: `predict()` for horizons up to 1024 is one forward pass
   (buffer build, causal scaling, transformer, inverse scaling). The wrapper
   re-implements that pass; data-dependent Python branches are patched out.
-- **Chronos-2**: `Chronos2Model.forward` is already pure tensor math, so the
-  export is nearly direct.
 - **Toto-2**: `forecast()` for horizons up to the decode block size runs its
   decode loop once with no KV cache; that single pass is the graph.
 - **TinyCast**: the published numbers come from an autoregressive predictor
@@ -344,27 +344,28 @@ matter, prefer the fp32 model.
 
 ## Attribution
 
-- **t0-alpha** and the [tfc-t0](https://github.com/theforecastingcompany/tfc-t0)
+- **Chronos-2** and the [chronos-forecasting](https://github.com/amazon-science/chronos-forecasting)
+  library are by **Amazon**, Apache-2.0.
+  - **t0-alpha** and the [tfc-t0](https://github.com/theforecastingcompany/tfc-t0)
   library are built by **The Forecasting Company** and released under
   Apache-2.0, with the weights gated on Hugging Face. The export script
   contains export-safe adaptations of several tfc-t0 inference functions,
   which are listed in [NOTICE](NOTICE). According to tfc-t0's source headers,
   parts of the architecture derive from Toto and Chronos.
-- **Chronos-2** and the [chronos-forecasting](https://github.com/amazon-science/chronos-forecasting)
-  library are by **Amazon**, Apache-2.0.
-- **Toto-2.0-22m** and the [toto](https://github.com/DataDog/toto) library
-  are by **Datadog**, Apache-2.0.
 - **TinyCast** and its [library](https://github.com/raws-labs/tinycast) are
   by **RAWS Labs**, Apache-2.0. The library is vendored at
   [`tinycast/`](tinycast/) for a reproducible export.
 - **TinyTimeMixer r2** and the [granite-tsfm](https://github.com/ibm-granite/granite-tsfm)
   library are by **IBM**, Apache-2.0.
+- **Toto-2.0-22m** and the [toto](https://github.com/DataDog/toto) library
+  are by **Datadog**, Apache-2.0.
 - **Datasets**: the Box and Jenkins airline passengers series, the Melbourne
   daily minimum temperatures from the Australian Bureau of Meteorology, and
   the monthly sunspot counts from SIDC at the Royal Observatory of Belgium,
   all fetched via [jbrownlee/Datasets](https://github.com/jbrownlee/Datasets).
 - **Runtime**: [ONNX Runtime](https://onnxruntime.ai) by Microsoft, MIT
   licensed.
+- **AI use**: Claude Fable 5 was used in different parts of the project.
 
 ## License
 
