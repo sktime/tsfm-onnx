@@ -1,4 +1,6 @@
-# Forecasting foundation models in the browser - do-it-yourself
+# Forecasting foundation models in the browser
+
+#### do-it-yourself companion to the article "Freeing Forecasting Foundation Models from Artificial Gateway Fees"
 
 #### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) ([`sktime`](https://www.sktime.net))
 
