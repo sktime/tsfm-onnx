@@ -369,7 +369,6 @@ matter, prefer the fp32 model.
 
 ## License
 
-The code in this repository is licensed under [Apache-2.0](LICENSE); see
-[NOTICE](NOTICE) for attribution details. No model weights are included.
-Each model's authors distribute their weights under their own terms on
-Hugging Face; the t0-alpha weights are additionally gated.
+The code in this repository is licensed under [Apache-2.0](LICENSE).
+No model weights are included, redistributed, or relicensed in this repository.
+Licenses of used/imported weights from Hugging Face are as per the licenses there.
