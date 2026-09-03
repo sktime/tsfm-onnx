@@ -1,8 +1,8 @@
 # Forecasting foundation models in the browser
 
-#### do-it-yourself companion to the article "Freeing Forecasting Foundation Models from Artificial Gateway Fees"
-
 #### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) ([`sktime`](https://www.sktime.net))
+
+#### do-it-yourself companion to the article "Freeing Forecasting Foundation Models from Artificial Gatekeeping"
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 [![Models on Hugging Face](https://img.shields.io/badge/models-Hugging%20Face-yellow)](https://huggingface.co/sktime)
