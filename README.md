@@ -1,6 +1,6 @@
 # Forecasting foundation models in the browser - do-it-yourself
 
-#### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) (`sktime`)
+#### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) ([`sktime`](www.sktime.net))
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 [![Models on Hugging Face](https://img.shields.io/badge/models-Hugging%20Face-yellow)](https://huggingface.co/sktime)
@@ -16,7 +16,7 @@ This repository also contains a worked case study of exporting custom PyTorch mo
 to ONNX. Every design decision, failure, and fix is documented, so the same
 process can be repeated on other models.
 
-> Note: this is a project by `sktime` - the vendor agnostic framework for time-series models.
+> Note: this is a project by [`sktime`](www.sktime.net) - the vendor agnostic, openly governed open source framework for time-series models.
 > It is not affiliated with, or endorsed by, any third party model providers, e.g., Amazon.
 
 ![The app: Toto-2 int8 forecasting the airline passengers series, with the model picker, precision switch, and backtest slider](docs/screenshots/app.png)
