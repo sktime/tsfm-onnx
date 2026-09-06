@@ -1,6 +1,6 @@
 # Forecasting foundation models in the browser
 
-#### by [Siddharth](@Siddharth7113) and [Tobias Pitters](@closechoice) ([`sktime`](https://www.sktime.net))
+#### by [Siddharth](https://github.com/Siddharth7113) and [Tobias Pitters](https://github.com/closechoice) ([`sktime`](https://www.sktime.net))
 
 #### do-it-yourself companion to the article "[Freeing Forecasting Foundation Models from Artificial Gatekeeping](https://www.sktime.net/blog/forecasting-in-the-browser/)"
 
